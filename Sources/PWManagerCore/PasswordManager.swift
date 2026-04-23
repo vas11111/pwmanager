@@ -248,6 +248,100 @@ public final class PasswordManager {
         }
     }
 
+    public func changeMasterPassword(
+        currentPassword: String,
+        newPassword: String,
+        kdfParams: KDFParams = .default
+    ) throws {
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+
+            guard newPassword.count >= KeyDerivation.minimumPasswordLength else {
+                throw PasswordManagerError.passwordTooShort(
+                    minimum: KeyDerivation.minimumPasswordLength
+                )
+            }
+
+            // Verify current password by attempting full unlock chain
+            let file = try readVaultFile()
+            let currentMasterKey = try KeyDerivation.deriveKey(
+                from: currentPassword, salt: file.salt,
+                params: KDFParams(
+                    memory: file.kdfMemory,
+                    iterations: file.kdfIterations,
+                    parallelism: file.kdfParallelism
+                )
+            )
+            let deviceKey = try keychain.retrieveDeviceKey()
+            let currentCombined = CryptoEngine.combineMasterWithDeviceKey(
+                masterKey: currentMasterKey, deviceKey: deviceKey
+            )
+            do {
+                _ = try CryptoEngine.decrypt(
+                    file.encryptedMLKEMPrivateKey, using: currentCombined
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            // Re-derive with new password
+            let newSalt = KeyDerivation.generateSalt()
+            let newMasterKey = try KeyDerivation.deriveKey(
+                from: newPassword, salt: newSalt, params: kdfParams
+            )
+            let newCombined = CryptoEngine.combineMasterWithDeviceKey(
+                masterKey: newMasterKey, deviceKey: deviceKey
+            )
+
+            // New ML-KEM keypair
+            let keyPair = CryptoEngine.generateMLKEMKeyPair()
+            let encapResult = CryptoEngine.encapsulate(publicKey: keyPair.encapsulationKey)
+
+            let newVaultKey = CryptoEngine.deriveVaultKey(
+                masterKey: newCombined,
+                quantumSecret: encapResult.sharedSecret
+            )
+
+            // Re-encrypt everything
+            let encoded = try JSONEncoder().encode(data)
+            let encryptedEntries = try CryptoEngine.encrypt(encoded, using: newVaultKey)
+            let encryptedPrivateKey = try CryptoEngine.encrypt(
+                Data(keyPair.decapsulationKey.keyBytes), using: newCombined
+            )
+
+            let metadata = VaultMetadata(
+                version: VaultFile.currentVersion,
+                salt: newSalt,
+                kdfMemory: kdfParams.memory,
+                kdfIterations: kdfParams.iterations,
+                kdfParallelism: kdfParams.parallelism,
+                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                encapsulatedKey: Data(encapResult.ciphertext)
+            )
+            let hmac = CryptoEngine.computeMetadataHMAC(
+                vaultKey: newVaultKey,
+                metadata: try metadata.canonicalBytes()
+            )
+
+            let newFile = VaultFile(
+                version: VaultFile.currentVersion,
+                salt: newSalt,
+                kdfMemory: kdfParams.memory,
+                kdfIterations: kdfParams.iterations,
+                kdfParallelism: kdfParams.parallelism,
+                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                encryptedMLKEMPrivateKey: encryptedPrivateKey,
+                encapsulatedKey: Data(encapResult.ciphertext),
+                encryptedEntries: encryptedEntries,
+                metadataHMAC: hmac
+            )
+
+            try writeVaultFile(newFile)
+            self.vaultKey = newVaultKey
+            self.vaultFileMetadata = newFile
+        }
+    }
+
     public func lock() {
         stateLock.withLock {
             vaultData = nil

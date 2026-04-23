@@ -11,7 +11,26 @@ struct PWManagerApp: App {
             RootView(viewModel: viewModel)
                 .task { viewModel.checkVaultStatus() }
         }
-        .commands { AppCommands(viewModel: viewModel) }
+        .commands {
+            AppCommands(viewModel: viewModel)
+
+            CommandGroup(replacing: .appInfo) {
+                Button("About PWManager") {
+                    NSApp.orderFrontStandardAboutPanel(options: [
+                        .applicationName: "PWManager",
+                        .applicationVersion: "1.0.0",
+                        .version: "1",
+                        .credits: NSAttributedString(
+                            string: "Quantum-safe password manager\nArgon2id \u{2022} ML-KEM-768 \u{2022} AES-256-GCM",
+                            attributes: [
+                                .font: NSFont.systemFont(ofSize: 11),
+                                .foregroundColor: NSColor.secondaryLabelColor,
+                            ]
+                        ),
+                    ])
+                }
+            }
+        }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 960, height: 620)
         .windowStyle(.hiddenTitleBar)
@@ -59,8 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
+            window.title = "PWManager"
             window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+            window.setFrameAutosaveName("PWManagerMain")
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            for window in sender.windows {
+                if window.canBecomeMain {
+                    window.makeKeyAndOrderFront(self)
+                    return false
+                }
+            }
+        }
+        return true
     }
 }
 

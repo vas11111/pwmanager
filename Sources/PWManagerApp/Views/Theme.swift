@@ -34,17 +34,31 @@ struct ThemeTextField: View {
     let placeholder: String
     @Binding var text: String
     var isSecure = false
+    var showClearButton = false
 
     var body: some View {
-        Group {
-            if isSecure {
-                SecureField(placeholder, text: $text)
-            } else {
-                TextField(placeholder, text: $text)
+        HStack(spacing: 6) {
+            Group {
+                if isSecure {
+                    SecureField(placeholder, text: $text)
+                } else {
+                    TextField(placeholder, text: $text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.system(size: 13, weight: .medium))
+
+            if showClearButton && !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.text3)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .textFieldStyle(.plain)
-        .font(.system(size: 13, weight: .medium))
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(Theme.bgField)

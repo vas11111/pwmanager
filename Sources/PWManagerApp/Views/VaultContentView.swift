@@ -31,7 +31,11 @@ struct VaultContentView: View {
             return .ignored
         }
         .onKeyPress(.escape) {
-            if showingForm { requestCloseForm(); return .handled }
+            if showingForm {
+                pendingCloseAction = { closeForm() }
+                showUnsavedWarning = true
+                return .handled
+            }
             if viewModel.selectedEntryID != nil {
                 viewModel.selectedEntryID = nil; return .handled
             }
@@ -133,7 +137,7 @@ struct VaultContentView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            ThemeTextField(placeholder: "Search...", text: $viewModel.searchText)
+            ThemeTextField(placeholder: "Search...", text: $viewModel.searchText, showClearButton: true)
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
 

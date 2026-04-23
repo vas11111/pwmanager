@@ -301,6 +301,10 @@ final class VaultViewModel {
             entries = try manager.allEntries()
         } catch {
             entries = []
+            if !PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
+                toastMessage = "Vault file was removed"
+                lock()
+            }
         }
     }
 

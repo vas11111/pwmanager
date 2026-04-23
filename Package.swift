@@ -29,7 +29,8 @@ let package = Package(
         .executableTarget(
             name: "PWManagerApp",
             dependencies: ["PWManagerCore"],
-            path: "Sources/PWManagerApp"
+            path: "Sources/PWManagerApp",
+            exclude: ["Info.plist"]
         ),
         .testTarget(
             name: "PWManagerCoreTests",

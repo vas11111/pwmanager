@@ -16,6 +16,23 @@ struct MenuBarView: View {
             Divider().opacity(0.3)
 
             Button {
+                for window in NSApp.windows where window.canBecomeMain {
+                    window.makeKeyAndOrderFront(nil)
+                }
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                HStack {
+                    Text("Show Window")
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
                 NSApplication.shared.terminate(nil)
             } label: {
                 HStack {

@@ -1,4 +1,5 @@
 import SwiftUI
+import PWManagerCore
 
 struct SettingsView: View {
     @AppStorage("autoLockMinutes") private var autoLockMinutes = 5
@@ -6,18 +7,31 @@ struct SettingsView: View {
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     @State private var biometricService = BiometricService()
+    @State private var showChangePassword = false
 
     var body: some View {
         TabView {
             securityTab
                 .tabItem { Label("Security", systemImage: "lock.shield") }
+            aboutTab
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 420, height: 300)
+        .frame(width: 440, height: 320)
         .task { biometricService.checkAvailability() }
     }
 
     private var securityTab: some View {
         Form {
+            Section("Master Password") {
+                Button("Change Master Password...") {
+                    showChangePassword = true
+                }
+                .sheet(isPresented: $showChangePassword) {
+                    ChangePasswordView()
+                        .preferredColorScheme(.dark)
+                }
+            }
+
             Section("Auto-Lock") {
                 Picker("Lock vault after", selection: $autoLockMinutes) {
                     Text("1 minute").tag(1)
@@ -59,5 +73,32 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var aboutTab: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(.tint)
+
+            Text("PWManager")
+                .font(.system(size: 18, weight: .bold))
+
+            Text("Version 1.0.0")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                Text("Quantum-safe password manager")
+                Text("Argon2id \u{2022} ML-KEM-768 \u{2022} AES-256-GCM")
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.tertiary)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
