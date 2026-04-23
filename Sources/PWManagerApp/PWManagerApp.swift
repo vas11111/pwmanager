@@ -47,7 +47,7 @@ struct RootView: View {
         .frame(minWidth: 780, minHeight: 500)
         .background(Theme.bg)
         .preferredColorScheme(.dark)
-        .animation(.easeOut(duration: 0.3), value: viewModel.state == .unlocked)
+        .animation(.spring(duration: 0.35, bounce: 0.15), value: viewModel.state == .unlocked)
     }
 }
 

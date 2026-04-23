@@ -21,6 +21,7 @@ final class VaultViewModel {
     var searchText: String = ""
     var selectedEntryID: UUID?
     var showingAddEntry = false
+    var toastMessage: String?
 
     let biometricService = BiometricService()
     let autoLockService = AutoLockService()
@@ -202,6 +203,30 @@ final class VaultViewModel {
         copyToClipboard(entry.password)
     }
 
+    func selectNext() {
+        let list = filteredEntries
+        guard !list.isEmpty else { return }
+        guard let current = selectedEntryID,
+              let idx = list.firstIndex(where: { $0.id == current }),
+              idx + 1 < list.count else {
+            selectedEntryID = list.first?.id
+            return
+        }
+        selectedEntryID = list[idx + 1].id
+    }
+
+    func selectPrevious() {
+        let list = filteredEntries
+        guard !list.isEmpty else { return }
+        guard let current = selectedEntryID,
+              let idx = list.firstIndex(where: { $0.id == current }),
+              idx > 0 else {
+            selectedEntryID = list.last?.id
+            return
+        }
+        selectedEntryID = list[idx - 1].id
+    }
+
     // MARK: - Entry Management
 
     func addEntry(
@@ -271,6 +296,7 @@ final class VaultViewModel {
 
         // Also set concealed type so clipboard managers are less likely to capture
         pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        toastMessage = "Copied to clipboard"
 
         let changeCount = pasteboard.changeCount
         let clearDelay = max(clipboardClearSeconds, Self.minimumClipboardClear)

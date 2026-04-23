@@ -7,7 +7,6 @@ struct EntryDetailView: View {
     @State private var showPassword = false
     @State private var showingEdit = false
     @State private var showingDeleteConfirm = false
-    @State private var copiedField: String?
 
     var body: some View {
         ScrollView {
@@ -64,10 +63,10 @@ struct EntryDetailView: View {
 
     private var fieldCards: some View {
         VStack(spacing: 1) {
-            fieldRow(label: "Username", value: entry.username, fieldName: "username")
+            fieldRow(label: "Username", value: entry.username)
             passwordRow
             if let url = entry.url, !url.isEmpty {
-                fieldRow(label: "Website", value: url, fieldName: "url")
+                fieldRow(label: "Website", value: url)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
@@ -77,7 +76,7 @@ struct EntryDetailView: View {
         )
     }
 
-    private func fieldRow(label: String, value: String, fieldName: String) -> some View {
+    private func fieldRow(label: String, value: String) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(label.uppercased())
@@ -91,7 +90,7 @@ struct EntryDetailView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            copyButton(value, fieldName: fieldName)
+            copyButton(value)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -122,7 +121,7 @@ struct EntryDetailView: View {
             }
             Spacer(minLength: 8)
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showPassword.toggle() }
+                withAnimation(.spring(duration: 0.2)) { showPassword.toggle() }
             } label: {
                 Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
                     .font(.system(size: 12, weight: .medium))
@@ -131,8 +130,8 @@ struct EntryDetailView: View {
                     .background(Theme.bgField)
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
-            .buttonStyle(.plain)
-            copyButton(entry.password, fieldName: "password")
+            .buttonStyle(GhostButtonStyle())
+            copyButton(entry.password)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -196,28 +195,22 @@ struct EntryDetailView: View {
                         .stroke(Theme.border, lineWidth: 0.5)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GhostButtonStyle())
     }
 
-    private func copyButton(_ value: String, fieldName: String) -> some View {
+    private func copyButton(_ value: String) -> some View {
         Button {
             viewModel.copyToClipboard(value)
-            withAnimation(.easeInOut(duration: 0.15)) { copiedField = fieldName }
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                withAnimation { if copiedField == fieldName { copiedField = nil } }
-            }
         } label: {
-            Image(systemName: copiedField == fieldName ? "checkmark" : "doc.on.doc")
+            Image(systemName: "doc.on.doc")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copiedField == fieldName ? .green : Theme.text3)
+                .foregroundStyle(Theme.text3)
                 .frame(width: 28, height: 28)
                 .background(Theme.bgField)
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.plain)
-        .help(copiedField == fieldName ? "Copied" : "Copy")
+        .buttonStyle(GhostButtonStyle())
+        .help("Copy")
     }
 
     private func safeURL(_ string: String) -> URL? {

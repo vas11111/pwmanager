@@ -8,12 +8,23 @@ struct VaultContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
+            divider
             detailPane
         }
         .background(Theme.bg)
+        .toast($viewModel.toastMessage)
         .sheet(isPresented: $viewModel.showingAddEntry) {
             EntryFormView(viewModel: viewModel)
                 .preferredColorScheme(.dark)
+        }
+        .onKeyPress(.downArrow) { viewModel.selectNext(); return .handled }
+        .onKeyPress(.upArrow) { viewModel.selectPrevious(); return .handled }
+        .onKeyPress(.return) {
+            if viewModel.selectedEntry != nil {
+                viewModel.copySelectedPassword()
+                return .handled
+            }
+            return .ignored
         }
     }
 
@@ -21,84 +32,93 @@ struct VaultContentView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            // Toolbar area
+            // Toolbar
             HStack {
                 Text("Vault")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Theme.text1)
-                    .tracking(-0.2)
+                    .tracking(-0.3)
 
                 Spacer()
 
                 HStack(spacing: 4) {
-                    toolbarButton(icon: "plus", help: "New entry") {
-                        viewModel.showingAddEntry = true
-                    }
-                    toolbarButton(icon: "lock.fill", help: "Lock vault") {
-                        viewModel.lock()
-                    }
+                    sidebarButton(icon: "plus") { viewModel.showingAddEntry = true }
+                    sidebarButton(icon: "lock.fill") { viewModel.lock() }
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
             // Search
             ThemeTextField(placeholder: "Search...", text: $viewModel.searchText)
                 .padding(.horizontal, 12)
-                .padding(.bottom, 10)
+                .padding(.bottom, 8)
 
-            // Item count
+            // Count
             HStack {
                 ThemeLabel(text: "\(viewModel.filteredEntries.count) items")
                 Spacer()
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 6)
+            .padding(.bottom, 4)
 
-            // Entry list
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(viewModel.filteredEntries) { entry in
-                        SidebarRow(
-                            entry: entry,
-                            isSelected: viewModel.selectedEntryID == entry.id,
-                            isHovered: hovered == entry.id
-                        )
-                        .onTapGesture { viewModel.selectedEntryID = entry.id }
-                        .onHover { hovered = $0 ? entry.id : nil }
+            // List
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(viewModel.filteredEntries) { entry in
+                            SidebarRow(
+                                entry: entry,
+                                isSelected: viewModel.selectedEntryID == entry.id,
+                                isHovered: hovered == entry.id
+                            )
+                            .id(entry.id)
+                            .onTapGesture {
+                                withAnimation(.spring(duration: 0.2)) {
+                                    viewModel.selectedEntryID = entry.id
+                                }
+                            }
+                            .onHover { hovered = $0 ? entry.id : nil }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                }
+                .onChange(of: viewModel.selectedEntryID) { _, newID in
+                    if let id = newID {
+                        withAnimation(.spring(duration: 0.2)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
             }
         }
         .frame(width: 260)
-        .background(Theme.bgSidebar)
+        .background(.ultraThinMaterial)
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Theme.border)
+            .frame(width: 0.5)
     }
 
     // MARK: - Detail
 
+    @ViewBuilder
     private var detailPane: some View {
-        ZStack {
-            Rectangle()
-                .fill(Theme.border)
-                .frame(width: 0.5)
-                .frame(maxHeight: .infinity)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let entry = viewModel.selectedEntry {
-                EntryDetailView(entry: entry, viewModel: viewModel)
-                    .id(entry.id)
-            } else {
-                emptyState
-            }
+        if let entry = viewModel.selectedEntry {
+            EntryDetailView(entry: entry, viewModel: viewModel)
+                .id(entry.id)
+                .transition(.opacity.animation(.easeOut(duration: 0.15)))
+        } else {
+            emptyState
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
             ZStack {
                 Circle()
                     .fill(Theme.bgCard)
@@ -108,45 +128,38 @@ struct VaultContentView: View {
                     .foregroundStyle(Theme.text3)
             }
 
-            VStack(spacing: 4) {
+            VStack(spacing: 5) {
                 Text(viewModel.entries.isEmpty ? "No Entries Yet" : "Select an Entry")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.text1)
                 Text(viewModel.entries.isEmpty
                      ? "Store your first password securely."
-                     : "Choose an entry from the sidebar.")
+                     : "Choose from the sidebar, or use \u{2191}\u{2193} arrow keys.")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.text3)
             }
 
             if viewModel.entries.isEmpty {
-                Button {
-                    viewModel.showingAddEntry = true
-                } label: {
+                Button { viewModel.showingAddEntry = true } label: {
                     Text("Add Entry")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                        .frame(width: 120)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AccentButtonStyle())
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func toolbarButton(icon: String, help: String, action: @escaping () -> Void) -> some View {
+    private func sidebarButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.text2)
                 .frame(width: 26, height: 26)
-                .background(Theme.bgField)
+                .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .help(help)
+        .buttonStyle(GhostButtonStyle())
     }
 }
 
@@ -164,11 +177,11 @@ private struct SidebarRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.siteName)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isSelected ? Theme.text1 : Theme.text1.opacity(0.85))
+                    .foregroundStyle(isSelected ? .white : Theme.text1.opacity(0.85))
                     .lineLimit(1)
                 Text(entry.username)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.text2)
+                    .foregroundStyle(isSelected ? .white.opacity(0.7) : Theme.text2)
                     .lineLimit(1)
             }
 
@@ -178,8 +191,10 @@ private struct SidebarRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
-                .fill(isSelected ? Theme.bgSelected : isHovered ? Theme.bgHover : .clear)
+                .fill(isSelected ? Theme.accent.opacity(0.65) : isHovered ? Theme.bgHover : .clear)
         )
         .contentShape(Rectangle())
+        .animation(.spring(duration: 0.2), value: isSelected)
+        .animation(.easeOut(duration: 0.15), value: isHovered)
     }
 }

@@ -51,6 +51,7 @@ struct CreateVaultView: View {
 
                     VStack(spacing: 8) {
                         ThemeTextField(placeholder: "Master password", text: $password, isSecure: true)
+                        PasswordStrengthBar(password: password)
                         ThemeTextField(placeholder: "Confirm password", text: $confirm, isSecure: true)
                     }
                     .frame(width: 280)
@@ -73,11 +74,7 @@ struct CreateVaultView: View {
                         }
                         .frame(width: 260, height: 20)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.vertical, 10)
-                    .background(isValid && !viewModel.isProcessing ? Theme.accent : Theme.accent.opacity(0.3))
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
+                    .buttonStyle(AccentButtonStyle(disabled: !isValid || viewModel.isProcessing))
                     .disabled(!isValid || viewModel.isProcessing)
                 }
             }

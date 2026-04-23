@@ -72,6 +72,8 @@ struct EntryFormView: View {
                             }
                         }
 
+                        PasswordStrengthBar(password: password)
+
                         if showGenerator {
                             generatorPanel
                                 .transition(.opacity.combined(with: .move(edge: .top)))
