@@ -151,10 +151,13 @@ public final class PasswordManager {
                 throw PasswordManagerError.unsupportedVaultVersion(file.version)
             }
 
-            // Reject vault files with weakened KDF parameters
+            // Reject vault files with unsafe KDF parameters (too weak or absurdly high)
             guard file.kdfMemory >= KDFParams.minimumMemory,
+                  file.kdfMemory <= KDFParams.maximumMemory,
                   file.kdfIterations >= KDFParams.minimumIterations,
-                  file.kdfParallelism >= KDFParams.minimumParallelism else {
+                  file.kdfIterations <= KDFParams.maximumIterations,
+                  file.kdfParallelism >= KDFParams.minimumParallelism,
+                  file.kdfParallelism <= KDFParams.maximumParallelism else {
                 throw PasswordManagerError.weakKDFParams
             }
 

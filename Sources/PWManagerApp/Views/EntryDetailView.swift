@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import PWManagerCore
 
 struct EntryDetailView: View {
@@ -18,8 +17,8 @@ struct EntryDetailView: View {
                         Text(entry.siteName)
                             .font(.title2)
                             .fontWeight(.semibold)
-                        if let url = entry.url, !url.isEmpty {
-                            Link(url, destination: URL(string: url) ?? URL(string: "https://example.com")!)
+                        if let url = entry.url, let parsed = safeURL(url) {
+                            Link(url, destination: parsed)
                                 .font(.caption)
                                 .foregroundStyle(.tint)
                         }
@@ -131,8 +130,7 @@ struct EntryDetailView: View {
 
     private func copyButton(_ value: String, fieldName: String) -> some View {
         Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(value, forType: .string)
+            viewModel.copyToClipboard(value)
             copiedField = fieldName
             Task {
                 try? await Task.sleep(for: .seconds(2))
@@ -142,6 +140,15 @@ struct EntryDetailView: View {
             Image(systemName: copiedField == fieldName ? "checkmark" : "doc.on.doc")
         }
         .buttonStyle(.borderless)
-        .help("Copy \(fieldName)")
+        .help(copiedField == fieldName ? "Copied! Clears in 30s" : "Copy \(fieldName)")
+    }
+
+    private func safeURL(_ string: String) -> URL? {
+        guard let url = URL(string: string),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else {
+            return nil
+        }
+        return url
     }
 }

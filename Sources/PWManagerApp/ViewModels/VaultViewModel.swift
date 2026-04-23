@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import PWManagerCore
 
 private struct Unsendable<T>: @unchecked Sendable { let value: T }
@@ -22,6 +23,13 @@ final class VaultViewModel {
     var showingAddEntry = false
 
     nonisolated(unsafe) private let manager: PasswordManager
+    private var inflightTask: Task<Void, Never>?
+    private var failedAttempts = 0
+    private var lockoutUntil: Date?
+
+    private static let clipboardClearDelay: TimeInterval = 30
+    private static let maxFailedAttempts = 5
+    private static let lockoutDuration: TimeInterval = 30
 
     init() {
         self.manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
@@ -40,6 +48,16 @@ final class VaultViewModel {
     var selectedEntry: PasswordEntry? {
         guard let id = selectedEntryID else { return nil }
         return entries.first { $0.id == id }
+    }
+
+    var isLockedOut: Bool {
+        guard let until = lockoutUntil else { return false }
+        return Date() < until
+    }
+
+    var lockoutRemaining: Int {
+        guard let until = lockoutUntil else { return 0 }
+        return max(0, Int(until.timeIntervalSinceNow.rounded(.up)))
     }
 
     func checkVaultStatus() {
@@ -64,15 +82,17 @@ final class VaultViewModel {
         isProcessing = true
         let box = Unsendable(value: manager)
 
-        Task.detached {
+        inflightTask = Task.detached {
             do {
                 try box.value.createVault(masterPassword: password)
                 await MainActor.run {
+                    guard self.isProcessing else { return }
                     self.isProcessing = false
                     self.refreshEntries()
                     self.state = .unlocked
                 }
             } catch {
+                if Task.isCancelled { return }
                 await MainActor.run {
                     self.isProcessing = false
                     self.errorMessage = Self.friendlyError(error)
@@ -86,29 +106,47 @@ final class VaultViewModel {
             errorMessage = "Enter your master password."
             return
         }
+        if isLockedOut {
+            errorMessage = "Too many attempts. Try again in \(lockoutRemaining)s."
+            return
+        }
 
         errorMessage = nil
         isProcessing = true
         let box = Unsendable(value: manager)
 
-        Task.detached {
+        inflightTask = Task.detached {
             do {
                 try box.value.unlock(masterPassword: password)
                 await MainActor.run {
+                    guard self.isProcessing else { return }
                     self.isProcessing = false
+                    self.failedAttempts = 0
+                    self.lockoutUntil = nil
                     self.refreshEntries()
                     self.state = .unlocked
                 }
             } catch {
+                if Task.isCancelled { return }
                 await MainActor.run {
                     self.isProcessing = false
-                    self.errorMessage = Self.friendlyError(error)
+                    self.failedAttempts += 1
+                    if self.failedAttempts >= Self.maxFailedAttempts {
+                        self.lockoutUntil = Date().addingTimeInterval(Self.lockoutDuration)
+                        self.failedAttempts = 0
+                        self.errorMessage = "Too many failed attempts. Locked for \(Int(Self.lockoutDuration))s."
+                    } else {
+                        self.errorMessage = Self.friendlyError(error)
+                    }
                 }
             }
         }
     }
 
     func lock() {
+        inflightTask?.cancel()
+        inflightTask = nil
+        isProcessing = false
         manager.lock()
         entries = []
         selectedEntryID = nil
@@ -116,6 +154,8 @@ final class VaultViewModel {
         errorMessage = nil
         state = .locked
     }
+
+    // MARK: - Entry Management
 
     func addEntry(
         siteName: String,
@@ -168,6 +208,24 @@ final class VaultViewModel {
             entries = []
         }
     }
+
+    // MARK: - Clipboard
+
+    func copyToClipboard(_ value: String) {
+        let pasteboard = NSPasteboard.general
+        let changeCount = pasteboard.changeCount
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+
+        Task {
+            try? await Task.sleep(for: .seconds(Self.clipboardClearDelay))
+            if pasteboard.changeCount == changeCount + 1 {
+                pasteboard.clearContents()
+            }
+        }
+    }
+
+    // MARK: - Errors
 
     private static func friendlyError(_ error: any Error) -> String {
         guard let pwError = error as? PasswordManagerError else {
