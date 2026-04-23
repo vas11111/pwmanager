@@ -9,70 +9,89 @@ struct CreateVaultView: View {
         password.count >= 8 && password == confirm
     }
 
+    private var validationMessage: (String, Color)? {
+        if !password.isEmpty && password.count < 8 {
+            return ("At least 8 characters required", .orange)
+        }
+        if !confirm.isEmpty && password != confirm {
+            return ("Passwords do not match", .red)
+        }
+        if let error = viewModel.errorMessage {
+            return (error, .red)
+        }
+        return nil
+    }
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack {
             Spacer()
 
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+            VStack(spacing: 28) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tint)
 
-            Text("Create Your Vault")
-                .font(.title)
-                .fontWeight(.semibold)
+                VStack(spacing: 6) {
+                    Text("Create Your Vault")
+                        .font(.title2.weight(.semibold))
 
-            Text("Choose a strong master password. This is the only password you need to remember.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 340)
-
-            VStack(spacing: 12) {
-                SecureField("Master Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("Confirm Password", text: $confirm)
-                    .textFieldStyle(.roundedBorder)
-
-                if !password.isEmpty && password.count < 8 {
-                    Label("At least 8 characters required", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    Text("Choose a strong master password.\nThis is the only password you'll need to remember.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if !confirm.isEmpty && password != confirm {
-                    Label("Passwords do not match", systemImage: "xmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                VStack(spacing: 10) {
+                    SecureField("Master Password", text: $password)
+                    SecureField("Confirm Password", text: $confirm)
                 }
-            }
-            .frame(width: 280)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 300)
 
-            if let error = viewModel.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            Button {
-                viewModel.createVault(password: password, confirm: confirm)
-            } label: {
-                if viewModel.isProcessing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 200)
-                } else {
-                    Text("Create Vault")
-                        .frame(width: 200)
+                // Fixed-height validation area — prevents layout shift
+                Group {
+                    if let (message, color) = validationMessage {
+                        Text(message)
+                            .foregroundStyle(color)
+                    } else {
+                        Text(" ")
+                    }
                 }
+                .font(.caption)
+                .frame(height: 16)
+
+                Button {
+                    viewModel.createVault(password: password, confirm: confirm)
+                } label: {
+                    Group {
+                        if viewModel.isProcessing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Create Vault")
+                        }
+                    }
+                    .frame(width: 200, height: 20)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!isValid || viewModel.isProcessing)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!isValid || viewModel.isProcessing)
+            .padding(36)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5)
+            }
 
             Spacer()
         }
-        .padding(40)
-        .frame(minWidth: 440, minHeight: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.windowBackgroundColor))
     }
 }

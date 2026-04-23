@@ -35,65 +35,65 @@ struct EntryFormView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Title bar
+            Text(existing == nil ? "New Entry" : "Edit Entry")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(.bar)
+
+            Divider()
+
             Form {
-                Section("Details") {
+                Section {
                     TextField("Site Name", text: $siteName)
-                    TextField("Username", text: $username)
+                    TextField("Username or Email", text: $username)
                     TextField("URL", text: $url)
                         .textContentType(.URL)
                 }
 
-                Section("Password") {
-                    HStack {
-                        if showPassword {
-                            TextField("Password", text: $password)
-                                .fontDesign(.monospaced)
-                        } else {
-                            SecureField("Password", text: $password)
+                Section {
+                    HStack(spacing: 8) {
+                        Group {
+                            if showPassword {
+                                TextField("Password", text: $password)
+                                    .fontDesign(.monospaced)
+                            } else {
+                                SecureField("Password", text: $password)
+                            }
                         }
+                        .frame(minWidth: 200)
+
                         Button {
                             showPassword.toggle()
                         } label: {
                             Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .frame(width: 18)
                         }
                         .buttonStyle(.borderless)
 
-                        Button("Generate") {
-                            showGenerator.toggle()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showGenerator.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "wand.and.stars")
+                                .frame(width: 18)
                         }
                         .buttonStyle(.borderless)
+                        .help("Password generator")
                     }
 
                     if showGenerator {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Length: \(Int(genLength))")
-                                    .monospacedDigit()
-                                Slider(value: $genLength, in: 8...64, step: 1)
-                            }
-                            HStack(spacing: 12) {
-                                Toggle("abc", isOn: $genLowercase)
-                                Toggle("ABC", isOn: $genUppercase)
-                                Toggle("123", isOn: $genDigits)
-                                Toggle("#$%", isOn: $genSymbols)
-                            }
-                            .toggleStyle(.checkbox)
-
-                            Button("Fill Password") {
-                                password = generatePassword()
-                                showGenerator = false
-                                showPassword = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 4)
+                        generatorControls
                     }
+                } header: {
+                    Text("Password")
                 }
 
                 Section("Notes") {
                     TextEditor(text: $notes)
-                        .frame(minHeight: 60)
+                        .frame(height: 72)
                         .font(.body)
                 }
             }
@@ -105,15 +105,50 @@ struct EntryFormView: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(existing == nil ? "Add Entry" : "Save Changes") {
+                Button(existing == nil ? "Add Entry" : "Save") {
                     save()
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
                 .disabled(!isValid)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .frame(minWidth: 420, minHeight: 440)
+        .frame(width: 460, height: 520)
+    }
+
+    private var generatorControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Length: \(Int(genLength))")
+                    .font(.callout)
+                    .monospacedDigit()
+                    .frame(width: 70, alignment: .leading)
+                Slider(value: $genLength, in: 8...64, step: 1)
+            }
+
+            HStack(spacing: 16) {
+                Toggle("a-z", isOn: $genLowercase)
+                Toggle("A-Z", isOn: $genUppercase)
+                Toggle("0-9", isOn: $genDigits)
+                Toggle("#$%", isOn: $genSymbols)
+            }
+            .toggleStyle(.checkbox)
+            .font(.callout)
+
+            Button {
+                password = generatePassword()
+                showGenerator = false
+                showPassword = true
+            } label: {
+                Text("Generate & Fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 4)
     }
 
     private func save() {

@@ -12,70 +12,88 @@ struct UnlockView: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack {
             Spacer()
 
-            Image(systemName: "lock.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.secondary)
+            VStack(spacing: 28) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
 
-            Text("PWManager")
-                .font(.title)
-                .fontWeight(.semibold)
+                VStack(spacing: 6) {
+                    Text("PWManager")
+                        .font(.title2.weight(.semibold))
 
-            Text("Enter your master password to unlock.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                    Text("Enter your master password to unlock.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
 
-            VStack(spacing: 12) {
                 SecureField("Master Password", text: $password)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { unlock() }
-                    .frame(width: 280)
+                    .frame(width: 300)
 
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: 280)
+                // Fixed-height error area
+                Group {
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text(" ")
+                    }
+                }
+                .font(.caption)
+                .frame(height: 16)
+
+                HStack(spacing: 12) {
+                    Button {
+                        unlock()
+                    } label: {
+                        Group {
+                            if viewModel.isProcessing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Unlock")
+                            }
+                        }
+                        .frame(width: canUseTouchID ? 160 : 200, height: 20)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(password.isEmpty || viewModel.isProcessing)
+
+                    if canUseTouchID {
+                        Button {
+                            viewModel.unlockWithBiometrics()
+                        } label: {
+                            Image(systemName: "touchid")
+                                .font(.title2)
+                                .frame(height: 20)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .disabled(viewModel.isProcessing)
+                        .help("Unlock with Touch ID")
+                    }
                 }
             }
-
-            HStack(spacing: 12) {
-                Button {
-                    unlock()
-                } label: {
-                    if viewModel.isProcessing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 140)
-                    } else {
-                        Text("Unlock")
-                            .frame(width: 140)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(password.isEmpty || viewModel.isProcessing)
-
-                if canUseTouchID {
-                    Button {
-                        viewModel.unlockWithBiometrics()
-                    } label: {
-                        Image(systemName: "touchid")
-                            .font(.title2)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(viewModel.isProcessing)
-                    .help("Unlock with Touch ID")
-                }
+            .padding(36)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5)
             }
 
             Spacer()
         }
-        .padding(40)
-        .frame(minWidth: 440, minHeight: 380)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.windowBackgroundColor))
         .task {
             if canUseTouchID && !viewModel.isProcessing {
                 viewModel.unlockWithBiometrics()

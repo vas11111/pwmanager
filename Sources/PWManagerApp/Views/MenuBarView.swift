@@ -15,11 +15,14 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Quit PWManager") {
+            Button {
                 NSApplication.shared.terminate(nil)
+            } label: {
+                Label("Quit PWManager", systemImage: "power")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .keyboardShortcut("q")
-            .padding(.horizontal)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
         .frame(width: 280)
@@ -28,36 +31,40 @@ struct MenuBarView: View {
     private var lockedContent: some View {
         VStack(spacing: 8) {
             Image(systemName: "lock.fill")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+                .font(.title3)
+                .foregroundStyle(.tertiary)
             Text("Vault is locked")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
-        .padding()
+        .frame(height: 80)
     }
 
     private var unlockedContent: some View {
         VStack(spacing: 0) {
             TextField("Search...", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .padding(8)
+                .controlSize(.small)
+                .padding(10)
 
             let results = filteredEntries
             if results.isEmpty {
                 Text(searchText.isEmpty ? "No entries" : "No matches")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding()
+                    .foregroundStyle(.tertiary)
+                    .frame(height: 48)
             } else {
                 ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(results.prefix(10)) { entry in
+                    LazyVStack(spacing: 0) {
+                        ForEach(results.prefix(8)) { entry in
                             MenuBarEntryRow(entry: entry, viewModel: viewModel)
+                            if entry.id != results.prefix(8).last?.id {
+                                Divider().padding(.leading, 12)
+                            }
                         }
                     }
                 }
-                .frame(maxHeight: 300)
+                .frame(maxHeight: 280)
             }
 
             Divider()
@@ -65,18 +72,18 @@ struct MenuBarView: View {
             Button {
                 viewModel.lock()
             } label: {
-                Label("Lock Vault", systemImage: "lock")
+                Label("Lock Vault", systemImage: "lock.fill")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
     }
 
     private var filteredEntries: [PasswordEntry] {
         guard !searchText.isEmpty else {
-            return Array(viewModel.entries.prefix(10))
+            return Array(viewModel.entries.prefix(8))
         }
         let q = searchText.lowercased()
         return viewModel.entries.filter {
@@ -92,33 +99,36 @@ private struct MenuBarEntryRow: View {
     @State private var copied = false
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.siteName)
-                    .font(.callout)
-                    .fontWeight(.medium)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
                 Text(entry.username)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             Button {
                 viewModel.copyToClipboard(entry.password)
-                copied = true
+                withAnimation(.easeInOut(duration: 0.2)) { copied = true }
                 Task {
                     try? await Task.sleep(for: .seconds(1.5))
-                    copied = false
+                    withAnimation { copied = false }
                 }
             } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
                     .font(.caption)
+                    .foregroundStyle(copied ? .green : .secondary)
             }
             .buttonStyle(.borderless)
             .help("Copy password")
         }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
     }
 }
