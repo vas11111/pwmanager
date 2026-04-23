@@ -6,6 +6,9 @@ struct VaultContentView: View {
     @State private var hovered: UUID?
     @State private var editingEntry: PasswordEntry?
     @State private var isAdding = false
+    @State private var showDeleteConfirm = false
+    @State private var pendingCloseAction: (() -> Void)?
+    @State private var showUnsavedWarning = false
 
     private var showingForm: Bool { isAdding || editingEntry != nil }
 
@@ -17,21 +20,78 @@ struct VaultContentView: View {
         }
         .background(Theme.bg)
         .toast($viewModel.toastMessage)
+        .focusable()
         .onKeyPress(.downArrow) { viewModel.selectNext(); return .handled }
         .onKeyPress(.upArrow) { viewModel.selectPrevious(); return .handled }
         .onKeyPress(.return) {
-            if viewModel.selectedEntry != nil {
+            if viewModel.selectedEntry != nil && !showingForm {
                 viewModel.copySelectedPassword()
                 return .handled
             }
             return .ignored
         }
         .onKeyPress(.escape) {
-            if showingForm { closeForm(); return .handled }
+            if showingForm { requestCloseForm(); return .handled }
+            if viewModel.selectedEntryID != nil {
+                viewModel.selectedEntryID = nil; return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.delete) {
+            if viewModel.selectedEntryID != nil, !showingForm {
+                showDeleteConfirm = true
+                return .handled
+            }
             return .ignored
         }
         .onChange(of: viewModel.showingAddEntry) { _, val in
-            if val { isAdding = true; editingEntry = nil; viewModel.showingAddEntry = false }
+            if val { openAddForm(); viewModel.showingAddEntry = false }
+        }
+        .alert("Delete Entry?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                if let id = viewModel.selectedEntryID {
+                    viewModel.deleteEntry(id: id)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let entry = viewModel.selectedEntry {
+                Text("'\(entry.siteName)' will be permanently deleted.")
+            }
+        }
+        .alert("Unsaved Changes", isPresented: $showUnsavedWarning) {
+            Button("Discard", role: .destructive) {
+                pendingCloseAction?()
+                pendingCloseAction = nil
+            }
+            Button("Keep Editing", role: .cancel) { pendingCloseAction = nil }
+        } message: {
+            Text("You have unsaved changes. Discard them?")
+        }
+    }
+
+    // MARK: - Form Management
+
+    private func openAddForm() {
+        let action = {
+            withAnimation(.spring(duration: 0.25)) {
+                isAdding = true
+                editingEntry = nil
+                viewModel.selectedEntryID = nil
+            }
+        }
+        if showingForm {
+            pendingCloseAction = action
+            showUnsavedWarning = true
+        } else {
+            action()
+        }
+    }
+
+    private func requestCloseForm() {
+        withAnimation(.spring(duration: 0.25)) {
+            isAdding = false
+            editingEntry = nil
         }
     }
 
@@ -39,6 +99,18 @@ struct VaultContentView: View {
         withAnimation(.spring(duration: 0.25)) {
             isAdding = false
             editingEntry = nil
+        }
+    }
+
+    private func startEdit(_ entry: PasswordEntry) {
+        let action = {
+            withAnimation(.spring(duration: 0.25)) { editingEntry = entry }
+        }
+        if showingForm {
+            pendingCloseAction = action
+            showUnsavedWarning = true
+        } else {
+            action()
         }
     }
 
@@ -53,13 +125,7 @@ struct VaultContentView: View {
                     .tracking(-0.3)
                 Spacer()
                 HStack(spacing: 4) {
-                    sidebarButton(icon: "plus") {
-                        withAnimation(.spring(duration: 0.25)) {
-                            isAdding = true
-                            editingEntry = nil
-                            viewModel.selectedEntryID = nil
-                        }
-                    }
+                    sidebarButton(icon: "plus") { openAddForm() }
                     sidebarButton(icon: "lock.fill") { viewModel.lock() }
                 }
             }
@@ -96,6 +162,26 @@ struct VaultContentView: View {
                                 }
                             }
                             .onHover { hovered = $0 ? entry.id : nil }
+                            .contextMenu {
+                                Button("Copy Password") {
+                                    viewModel.copyToClipboard(entry.password)
+                                }
+                                Button("Copy Username") {
+                                    viewModel.copyToClipboard(entry.username)
+                                }
+                                if let secret = entry.totpSecret, !secret.isEmpty,
+                                   let code = TOTPGenerator.generateCode(secret: secret) {
+                                    Button("Copy 2FA Code") {
+                                        viewModel.copyToClipboard(code)
+                                    }
+                                }
+                                Divider()
+                                Button("Edit") { startEdit(entry) }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    viewModel.deleteEntry(id: entry.id)
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, 8)
@@ -126,10 +212,8 @@ struct VaultContentView: View {
             } else if let editing = editingEntry {
                 InlineFormView(viewModel: viewModel, existing: editing, onClose: closeForm)
             } else if let entry = viewModel.selectedEntry {
-                EntryDetailView(entry: entry, viewModel: viewModel, onEdit: { e in
-                    withAnimation(.spring(duration: 0.25)) { editingEntry = e }
-                })
-                .id(entry.id)
+                EntryDetailView(entry: entry, viewModel: viewModel, onEdit: { startEdit($0) })
+                    .id(entry.id)
             } else {
                 emptyState
             }
@@ -157,7 +241,7 @@ struct VaultContentView: View {
             }
             if viewModel.entries.isEmpty {
                 Button {
-                    withAnimation(.spring(duration: 0.25)) { isAdding = true }
+                    openAddForm()
                 } label: {
                     Text("Add Entry").frame(width: 120)
                 }

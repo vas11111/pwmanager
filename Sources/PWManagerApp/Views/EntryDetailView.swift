@@ -183,7 +183,10 @@ struct EntryDetailView: View {
                 .foregroundStyle(Theme.text2)
                 .frame(width: 80, alignment: .leading)
 
-            Text(entry.createdAt, style: .date)
+            Text(entry.createdAt, style: .relative)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.text3)
+            + Text(" ago")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text3)
 
@@ -193,7 +196,10 @@ struct EntryDetailView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text2)
 
-            Text(entry.modifiedAt, style: .date)
+            Text(entry.modifiedAt, style: .relative)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.text3)
+            + Text(" ago")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text3)
         }

@@ -4,6 +4,8 @@ struct CreateVaultView: View {
     let viewModel: VaultViewModel
     @State private var password = ""
     @State private var confirm = ""
+    @FocusState private var focusedField: Field?
+    private enum Field { case password, confirm }
 
     private var isValid: Bool { password.count >= 8 && password == confirm }
 
@@ -51,10 +53,17 @@ struct CreateVaultView: View {
 
                     VStack(spacing: 8) {
                         ThemeTextField(placeholder: "Master password", text: $password, isSecure: true)
+                            .focused($focusedField, equals: .password)
+                            .onSubmit { focusedField = .confirm }
                         PasswordStrengthBar(password: password)
                         ThemeTextField(placeholder: "Confirm password", text: $confirm, isSecure: true)
+                            .focused($focusedField, equals: .confirm)
+                            .onSubmit {
+                                if isValid { viewModel.createVault(password: password, confirm: confirm) }
+                            }
                     }
                     .frame(width: 280)
+                    .onAppear { focusedField = .password }
 
                     Text(feedback?.0 ?? " ")
                         .font(.system(size: 11, weight: .medium))

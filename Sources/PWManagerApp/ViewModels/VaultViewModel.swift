@@ -51,9 +51,10 @@ final class VaultViewModel {
     }
 
     var filteredEntries: [PasswordEntry] {
-        guard !searchText.isEmpty else { return entries }
+        let sorted = entries.sorted { $0.siteName.localizedCaseInsensitiveCompare($1.siteName) == .orderedAscending }
+        guard !searchText.isEmpty else { return sorted }
         let query = searchText.lowercased()
-        return entries.filter {
+        return sorted.filter {
             $0.siteName.lowercased().contains(query)
                 || $0.username.lowercased().contains(query)
                 || ($0.url?.lowercased().contains(query) ?? false)
@@ -279,9 +280,16 @@ final class VaultViewModel {
 
     func deleteEntry(id: UUID) {
         guard state == .unlocked else { return }
+        let list = filteredEntries
+        let nextID: UUID? = {
+            guard let idx = list.firstIndex(where: { $0.id == id }) else { return nil }
+            if idx + 1 < list.count { return list[idx + 1].id }
+            if idx > 0 { return list[idx - 1].id }
+            return nil
+        }()
         do {
             try manager.deleteEntry(id: id)
-            if selectedEntryID == id { selectedEntryID = nil }
+            if selectedEntryID == id { selectedEntryID = nextID }
             refreshEntries()
         } catch {
             errorMessage = Self.friendlyError(error)

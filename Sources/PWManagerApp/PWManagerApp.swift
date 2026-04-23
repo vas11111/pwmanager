@@ -81,6 +81,13 @@ struct AppCommands: Commands {
             Button("Copy Password") { viewModel.copySelectedPassword() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(viewModel.state != .unlocked || viewModel.selectedEntry == nil)
+            Button("Copy Username") {
+                if let entry = viewModel.selectedEntry {
+                    viewModel.copyToClipboard(entry.username)
+                }
+            }
+            .keyboardShortcut("u", modifiers: [.command, .shift])
+            .disabled(viewModel.state != .unlocked || viewModel.selectedEntry == nil)
         }
     }
 }

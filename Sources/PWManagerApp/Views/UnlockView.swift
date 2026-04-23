@@ -3,6 +3,7 @@ import SwiftUI
 struct UnlockView: View {
     let viewModel: VaultViewModel
     @State private var password = ""
+    @FocusState private var isFocused: Bool
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     private var canUseTouchID: Bool {
@@ -43,8 +44,10 @@ struct UnlockView: View {
                     }
 
                     ThemeTextField(placeholder: "Master password", text: $password, isSecure: true)
+                        .focused($isFocused)
                         .frame(width: 280)
                         .onSubmit { unlock() }
+                        .onAppear { isFocused = true }
 
                     Text(viewModel.errorMessage ?? " ")
                         .font(.system(size: 11, weight: .medium))
