@@ -1,37 +1,43 @@
 import SwiftUI
 
-// MARK: - Color Palette
-
 enum Theme {
-    static let bg         = Color(.windowBackgroundColor)
-    static let bgCard     = Color(nsColor: .init(white: 0.5, alpha: 0.06))
-    static let bgField    = Color(nsColor: .init(white: 0.5, alpha: 0.08))
-    static let bgHover    = Color(nsColor: .init(white: 0.5, alpha: 0.10))
-    static let bgSelected = Color.accentColor.opacity(0.15)
-    static let border     = Color(nsColor: .separatorColor)
-    static let borderSoft = Color.primary.opacity(0.06)
+    // Backgrounds
+    static let bg          = Color(nsColor: .init(red: 0.07, green: 0.07, blue: 0.08, alpha: 1))
+    static let bgSidebar   = Color(nsColor: .init(red: 0.09, green: 0.09, blue: 0.10, alpha: 1))
+    static let bgCard      = Color(nsColor: .init(red: 0.11, green: 0.11, blue: 0.13, alpha: 1))
+    static let bgField     = Color(nsColor: .init(red: 0.13, green: 0.13, blue: 0.15, alpha: 1))
+    static let bgHover     = Color.white.opacity(0.05)
+    static let bgSelected  = Color.white.opacity(0.08)
 
-    static let textPrimary   = Color.primary
-    static let textSecondary = Color.secondary
-    static let textTertiary  = Color(nsColor: .tertiaryLabelColor)
+    // Text
+    static let text1 = Color(white: 0.92)
+    static let text2 = Color(white: 0.52)
+    static let text3 = Color(white: 0.32)
 
-    static let accent = Color.accentColor
+    // Accent
+    static let accent     = Color(red: 0.40, green: 0.52, blue: 1.0)
+    static let accentGlow = Color(red: 0.40, green: 0.52, blue: 1.0).opacity(0.15)
 
-    static let radius: CGFloat = 8
-    static let radiusLg: CGFloat = 12
+    // Borders
+    static let border     = Color.white.opacity(0.07)
+    static let borderSoft = Color.white.opacity(0.04)
+
+    // Radii
+    static let r: CGFloat = 8
+    static let rLg: CGFloat = 12
+    static let rSm: CGFloat = 6
 }
 
-// MARK: - Modern Text Field
+// MARK: - Text Field
 
 struct ThemeTextField: View {
     let placeholder: String
     @Binding var text: String
     var isSecure = false
-    @State private var revealed = false
 
     var body: some View {
         Group {
-            if isSecure && !revealed {
+            if isSecure {
                 SecureField(placeholder, text: $text)
             } else {
                 TextField(placeholder, text: $text)
@@ -39,91 +45,62 @@ struct ThemeTextField: View {
         }
         .textFieldStyle(.plain)
         .font(.system(size: 13, weight: .medium))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(Theme.bgField)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Theme.borderSoft, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                .stroke(Theme.border, lineWidth: 0.5)
         )
     }
 }
 
-// MARK: - Modern Card
+// MARK: - Card
 
 struct ThemeCard<Content: View>: View {
+    var padding: CGFloat = 28
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         content()
-            .padding(24)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
-                    .fill(.regularMaterial)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: Theme.radiusLg, style: .continuous)
-                    .stroke(Theme.borderSoft, lineWidth: 0.5)
-            }
-    }
-}
-
-// MARK: - Field Row (for detail view)
-
-struct ThemeFieldRow: View {
-    let label: String
-    let value: String
-    var isMono = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.textTertiary)
-                .tracking(0.6)
-            Text(value)
-                .font(isMono ? .system(size: 13, weight: .medium, design: .monospaced) : .system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .textSelection(.enabled)
-                .lineLimit(1)
-        }
-    }
-}
-
-// MARK: - Primary Button
-
-struct ThemePrimaryButton: View {
-    let label: String
-    var isLoading = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(label)
-                        .font(.system(size: 13, weight: .semibold))
-                }
-            }
-            .frame(width: 180, height: 18)
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
+            .padding(padding)
+            .background(Theme.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rLg, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.rLg, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 0.5)
+            )
     }
 }
 
 // MARK: - Section Label
 
-struct ThemeSectionLabel: View {
+struct ThemeLabel: View {
     let text: String
     var body: some View {
         Text(text.uppercased())
             .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(Theme.textTertiary)
+            .foregroundStyle(Theme.text3)
             .tracking(0.8)
+    }
+}
+
+// MARK: - Icon Badge
+
+struct ThemeIconBadge: View {
+    var icon: String = "key.fill"
+    var size: CGFloat = 32
+    var iconSize: CGFloat = 13
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+                .fill(Theme.accentGlow)
+                .frame(width: size, height: size)
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+        }
     }
 }

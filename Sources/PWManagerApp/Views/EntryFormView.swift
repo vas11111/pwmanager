@@ -29,38 +29,32 @@ struct EntryFormView: View {
         _notes = State(initialValue: existing?.notes ?? "")
     }
 
-    private var isValid: Bool {
-        !siteName.isEmpty && !username.isEmpty && !password.isEmpty
-    }
+    private var isValid: Bool { !siteName.isEmpty && !username.isEmpty && !password.isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 Text(existing == nil ? "New Entry" : "Edit Entry")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.text1)
                 Spacer()
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
 
-            Divider().opacity(0.5)
+            Divider().overlay(Theme.border)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Details
-                    VStack(alignment: .leading, spacing: 12) {
-                        ThemeSectionLabel(text: "Details")
-                        VStack(spacing: 8) {
-                            ThemeTextField(placeholder: "Site Name", text: $siteName)
-                            ThemeTextField(placeholder: "Username or Email", text: $username)
-                            ThemeTextField(placeholder: "URL (optional)", text: $url)
-                        }
+                VStack(alignment: .leading, spacing: 22) {
+                    formSection("Details") {
+                        ThemeTextField(placeholder: "Site name", text: $siteName)
+                        ThemeTextField(placeholder: "Username or email", text: $username)
+                        ThemeTextField(placeholder: "URL (optional)", text: $url)
                     }
 
-                    // Password
-                    VStack(alignment: .leading, spacing: 12) {
-                        ThemeSectionLabel(text: "Password")
+                    formSection("Password") {
                         HStack(spacing: 8) {
                             ThemeTextField(
                                 placeholder: "Password",
@@ -68,82 +62,82 @@ struct EntryFormView: View {
                                 isSecure: !showPassword
                             )
 
-                            Button {
+                            iconButton(showPassword ? "eye.slash" : "eye") {
                                 showPassword.toggle()
-                            } label: {
-                                Image(systemName: showPassword ? "eye.slash" : "eye")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .frame(width: 28, height: 28)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Theme.textTertiary)
-
-                            Button {
+                            iconButton("wand.and.stars", active: showGenerator) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     showGenerator.toggle()
                                 }
-                            } label: {
-                                Image(systemName: "wand.and.stars")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .frame(width: 28, height: 28)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(showGenerator ? Theme.accent : Theme.textTertiary)
                         }
 
                         if showGenerator {
-                            generatorControls
+                            generatorPanel
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
 
-                    // Notes
-                    VStack(alignment: .leading, spacing: 12) {
-                        ThemeSectionLabel(text: "Notes")
+                    formSection("Notes") {
                         TextEditor(text: $notes)
                             .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Theme.text1)
                             .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .frame(height: 72)
+                            .padding(10)
+                            .frame(height: 80)
                             .background(Theme.bgField)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Theme.borderSoft, lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                                    .stroke(Theme.border, lineWidth: 0.5)
                             )
                     }
                 }
                 .padding(24)
             }
 
-            Divider().opacity(0.5)
+            Divider().overlay(Theme.border)
 
             // Footer
             HStack {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .foregroundStyle(Theme.text2)
+
                 Spacer()
-                Button(existing == nil ? "Add Entry" : "Save") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!isValid)
+
+                Button { save() } label: {
+                    Text(existing == nil ? "Add Entry" : "Save")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 7)
+                        .background(isValid ? Theme.accent : Theme.accent.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!isValid)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
-        .frame(width: 460, height: 540)
+        .frame(width: 480, height: 560)
+        .background(Theme.bg)
     }
 
     // MARK: - Generator
 
-    private var generatorControls: some View {
+    private var generatorPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Length: \(Int(genLength))")
                     .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.text2)
                     .monospacedDigit()
-                    .frame(width: 70, alignment: .leading)
+                    .frame(width: 72, alignment: .leading)
                 Slider(value: $genLength, in: 8...64, step: 1)
+                    .tint(Theme.accent)
             }
 
             HStack(spacing: 14) {
@@ -154,6 +148,7 @@ struct EntryFormView: View {
             }
             .toggleStyle(.checkbox)
             .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Theme.text2)
 
             Button {
                 password = generatePassword()
@@ -162,18 +157,47 @@ struct EntryFormView: View {
             } label: {
                 Text("Generate & Fill")
                     .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
+                    .background(Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.plain)
         }
-        .padding(12)
+        .padding(14)
         .background(Theme.bgCard)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                .stroke(Theme.border, lineWidth: 0.5)
+        )
     }
 
-    // MARK: - Actions
+    // MARK: - Helpers
+
+    private func formSection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ThemeLabel(text: title)
+            VStack(spacing: 8) { content() }
+        }
+    }
+
+    private func iconButton(_ icon: String, active: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(active ? Theme.accent : Theme.text3)
+                .frame(width: 32, height: 32)
+                .background(Theme.bgField)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Theme.border, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
 
     private func save() {
         if var entry = existing {
@@ -184,13 +208,7 @@ struct EntryFormView: View {
             entry.notes = notes.isEmpty ? nil : notes
             viewModel.updateEntry(entry)
         } else {
-            viewModel.addEntry(
-                siteName: siteName,
-                username: username,
-                password: password,
-                url: url,
-                notes: notes
-            )
+            viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes)
         }
         dismiss()
     }

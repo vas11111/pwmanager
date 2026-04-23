@@ -10,11 +10,11 @@ struct PWManagerApp: App {
         WindowGroup {
             RootView(viewModel: viewModel)
                 .task { viewModel.checkVaultStatus() }
-                .preferredColorScheme(.dark)
         }
         .commands { AppCommands(viewModel: viewModel) }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 920, height: 600)
+        .defaultSize(width: 960, height: 620)
+        .windowStyle(.hiddenTitleBar)
 
         Settings {
             SettingsView()
@@ -35,7 +35,7 @@ struct RootView: View {
         Group {
             switch viewModel.state {
             case .loading:
-                Color.clear
+                Theme.bg.ignoresSafeArea()
             case .needsSetup:
                 CreateVaultView(viewModel: viewModel)
             case .locked:
@@ -44,7 +44,9 @@ struct RootView: View {
                 VaultContentView(viewModel: viewModel)
             }
         }
-        .frame(minWidth: 740, minHeight: 480)
+        .frame(minWidth: 780, minHeight: 500)
+        .background(Theme.bg)
+        .preferredColorScheme(.dark)
         .animation(.easeOut(duration: 0.3), value: viewModel.state == .unlocked)
     }
 }
@@ -53,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        if let window = NSApp.windows.first {
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        }
     }
 }
 
@@ -65,14 +73,11 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(viewModel.state != .unlocked)
         }
-
         CommandGroup(after: .toolbar) {
             Button("Lock Vault") { viewModel.lock() }
                 .keyboardShortcut("l", modifiers: .command)
                 .disabled(viewModel.state != .unlocked)
-
             Divider()
-
             Button("Copy Password") { viewModel.copySelectedPassword() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(viewModel.state != .unlocked || viewModel.selectedEntry == nil)

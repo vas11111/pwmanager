@@ -11,33 +11,19 @@ struct EntryDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
                 header
                 fieldCards
-                if let notes = entry.notes, !notes.isEmpty {
-                    notesSection(notes)
-                }
+                if let notes = entry.notes, !notes.isEmpty { notesSection(notes) }
                 metadata
+                Spacer(minLength: 20)
             }
-            .padding(32)
+            .padding(36)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .toolbar {
-            ToolbarItem {
-                Button { showingEdit = true } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-            }
-            ToolbarItem {
-                Button(role: .destructive) { showingDeleteConfirm = true } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-            }
-        }
         .sheet(isPresented: $showingEdit) {
             EntryFormView(viewModel: viewModel, existing: entry)
+                .preferredColorScheme(.dark)
         }
         .alert("Delete Entry?", isPresented: $showingDeleteConfirm) {
             Button("Delete", role: .destructive) { viewModel.deleteEntry(id: entry.id) }
@@ -50,63 +36,74 @@ struct EntryDetailView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Theme.accent.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "key.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-            }
+        HStack(spacing: 16) {
+            ThemeIconBadge(size: 48, iconSize: 20)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(entry.siteName)
-                    .font(.system(size: 18, weight: .bold))
-                    .tracking(-0.3)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Theme.text1)
+                    .tracking(-0.4)
                 if let url = entry.url, let parsed = safeURL(url) {
                     Link(url, destination: parsed)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.accent.opacity(0.8))
+                        .foregroundStyle(Theme.accent)
                 }
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                actionButton(icon: "pencil") { showingEdit = true }
+                actionButton(icon: "trash") { showingDeleteConfirm = true }
             }
         }
     }
 
-    // MARK: - Field Cards
+    // MARK: - Fields
 
     private var fieldCards: some View {
         VStack(spacing: 1) {
             fieldRow(label: "Username", value: entry.username, fieldName: "username")
             passwordRow
             if let url = entry.url, !url.isEmpty {
-                fieldRow(label: "URL", value: url, fieldName: "url")
+                fieldRow(label: "Website", value: url, fieldName: "url")
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .stroke(Theme.borderSoft, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: Theme.r, style: .continuous)
+                .stroke(Theme.border, lineWidth: 0.5)
         )
     }
 
     private func fieldRow(label: String, value: String, fieldName: String) -> some View {
         HStack(spacing: 12) {
-            ThemeFieldRow(label: label, value: value)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.text3)
+                    .tracking(0.6)
+                Text(value)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.text1)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 8)
             copyButton(value, fieldName: fieldName)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Theme.bgField)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Theme.bgCard)
     }
 
     private var passwordRow: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("PASSWORD")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.text3)
                     .tracking(0.6)
                 Group {
                     if showPassword {
@@ -114,12 +111,14 @@ struct EntryDetailView: View {
                             .fontDesign(.monospaced)
                             .textSelection(.enabled)
                     } else {
-                        Text(String(repeating: "\u{2022}", count: 14))
+                        Text(String(repeating: "\u{2022}", count: 16))
+                            .foregroundStyle(Theme.text2)
                     }
                 }
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.text1)
                 .lineLimit(1)
-                .frame(height: 16, alignment: .leading)
+                .frame(height: 18, alignment: .leading)
             }
             Spacer(minLength: 8)
             Button {
@@ -127,33 +126,35 @@ struct EntryDetailView: View {
             } label: {
                 Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(width: 24, height: 24)
+                    .foregroundStyle(Theme.text3)
+                    .frame(width: 28, height: 28)
+                    .background(Theme.bgField)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
             .buttonStyle(.plain)
             copyButton(entry.password, fieldName: "password")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Theme.bgField)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Theme.bgCard)
     }
 
     // MARK: - Notes
 
     private func notesSection(_ notes: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            ThemeSectionLabel(text: "Notes")
+            ThemeLabel(text: "Notes")
             Text(notes)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.text1.opacity(0.8))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Theme.bgField)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .padding(14)
+                .background(Theme.bgCard)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                        .stroke(Theme.borderSoft, lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: Theme.r, style: .continuous)
+                        .stroke(Theme.border, lineWidth: 0.5)
                 )
         }
     }
@@ -172,15 +173,31 @@ struct EntryDetailView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Theme.textTertiary)
+                .foregroundStyle(Theme.text3)
                 .tracking(0.5)
             Text(date, style: .date)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(Theme.text2)
         }
     }
 
-    // MARK: - Copy
+    // MARK: - Helpers
+
+    private func actionButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.text2)
+                .frame(width: 30, height: 30)
+                .background(Theme.bgField)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                        .stroke(Theme.border, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
 
     private func copyButton(_ value: String, fieldName: String) -> some View {
         Button {
@@ -193,12 +210,14 @@ struct EntryDetailView: View {
         } label: {
             Image(systemName: copiedField == fieldName ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copiedField == fieldName ? .green : Theme.textTertiary)
-                .frame(width: 24, height: 24)
+                .foregroundStyle(copiedField == fieldName ? .green : Theme.text3)
+                .frame(width: 28, height: 28)
+                .background(Theme.bgField)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .help(copiedField == fieldName ? "Copied" : "Copy \(fieldName)")
+        .help(copiedField == fieldName ? "Copied" : "Copy")
     }
 
     private func safeURL(_ string: String) -> URL? {
