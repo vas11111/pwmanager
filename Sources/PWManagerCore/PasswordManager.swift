@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-@preconcurrency import SwiftKyber
+@preconcurrency import VendoredKyber
 
 public enum PasswordManagerError: Error, Sendable {
     case vaultAlreadyExists

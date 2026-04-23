@@ -13,27 +13,50 @@ let package = Package(
             targets: ["PWManagerCore"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/leif-ibsen/SwiftKyber", exact: "3.5.0"),
-    ],
     targets: [
-        // Vendored C implementation of Argon2 (phc-winner-argon2)
+        // Vendored: phc-winner-argon2 reference C implementation
         .target(
             name: "CArgon2",
             path: "Sources/CArgon2",
             publicHeadersPath: "include",
             cSettings: [.headerSearchPath("."), .headerSearchPath("blake2")]
         ),
-        // Swift wrapper around vendored CArgon2
+        // Vendored: Swift wrapper around CArgon2
         .target(
             name: "VendoredArgon2",
             dependencies: ["CArgon2"],
             path: "Sources/VendoredArgon2"
         ),
+        // Vendored: leif-ibsen/BigInt v1.23.0
+        .target(
+            name: "VendoredBigInt",
+            path: "Sources/VendoredBigInt",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Vendored: leif-ibsen/ASN1 v2.7.0 (depends on BigInt)
+        .target(
+            name: "VendoredASN1",
+            dependencies: ["VendoredBigInt"],
+            path: "Sources/VendoredASN1",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Vendored: leif-ibsen/Digest v1.13.0
+        .target(
+            name: "VendoredDigest",
+            path: "Sources/VendoredDigest",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Vendored: leif-ibsen/SwiftKyber v3.5.0 (depends on ASN1, BigInt, Digest)
+        .target(
+            name: "VendoredKyber",
+            dependencies: ["VendoredASN1", "VendoredBigInt", "VendoredDigest"],
+            path: "Sources/VendoredKyber",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .target(
             name: "PWManagerCore",
             dependencies: [
-                "SwiftKyber",
+                "VendoredKyber",
                 "VendoredArgon2",
             ],
             path: "Sources/PWManagerCore"
