@@ -52,8 +52,8 @@ final class AutoLockService {
 
     private func startIdleTimer() {
         idleTimer?.invalidate()
-        guard autoLockMinutes > 0 else { return }
-        let interval = TimeInterval(autoLockMinutes * 60)
+        let minutes = max(autoLockMinutes, 1)
+        let interval = TimeInterval(minutes * 60)
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.checkIdle(timeout: interval)
