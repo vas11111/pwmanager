@@ -11,69 +11,28 @@ struct EntryDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.siteName)
-                        .font(.title3.weight(.semibold))
-                    if let url = entry.url, let parsed = safeURL(url) {
-                        Link(url, destination: parsed)
-                            .font(.caption)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .padding(.bottom, 20)
-
-                // Fields
-                VStack(spacing: 1) {
-                    fieldCard(label: "Username", value: entry.username, fieldName: "username")
-
-                    passwordCard
-
-                    if let url = entry.url, !url.isEmpty {
-                        fieldCard(label: "URL", value: url, fieldName: "url")
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                // Notes
+            VStack(alignment: .leading, spacing: 24) {
+                header
+                fieldCards
                 if let notes = entry.notes, !notes.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Notes")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text(notes)
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(Color(.controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                    .padding(.top, 20)
+                    notesSection(notes)
                 }
-
-                // Metadata
-                HStack(spacing: 20) {
-                    metadataLabel("Created", date: entry.createdAt)
-                    metadataLabel("Modified", date: entry.modifiedAt)
-                    Spacer()
-                }
-                .padding(.top, 20)
+                metadata
             }
-            .padding(28)
+            .padding(32)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .toolbar {
             ToolbarItem {
                 Button { showingEdit = true } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .semibold))
                 }
             }
             ToolbarItem {
-                Button(role: .destructive) {
-                    showingDeleteConfirm = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                Button(role: .destructive) { showingDeleteConfirm = true } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .semibold))
                 }
             }
         }
@@ -81,108 +40,171 @@ struct EntryDetailView: View {
             EntryFormView(viewModel: viewModel, existing: entry)
         }
         .alert("Delete Entry?", isPresented: $showingDeleteConfirm) {
-            Button("Delete", role: .destructive) {
-                viewModel.deleteEntry(id: entry.id)
-            }
+            Button("Delete", role: .destructive) { viewModel.deleteEntry(id: entry.id) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("'\(entry.siteName)' will be permanently deleted.")
         }
     }
 
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Theme.accent.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "key.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.siteName)
+                    .font(.system(size: 18, weight: .bold))
+                    .tracking(-0.3)
+                if let url = entry.url, let parsed = safeURL(url) {
+                    Link(url, destination: parsed)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.accent.opacity(0.8))
+                }
+            }
+        }
+    }
+
     // MARK: - Field Cards
 
-    private func fieldCard(label: String, value: String, fieldName: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Text(value)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .lineLimit(1)
+    private var fieldCards: some View {
+        VStack(spacing: 1) {
+            fieldRow(label: "Username", value: entry.username, fieldName: "username")
+            passwordRow
+            if let url = entry.url, !url.isEmpty {
+                fieldRow(label: "URL", value: url, fieldName: "url")
             }
-            Spacer(minLength: 16)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .stroke(Theme.borderSoft, lineWidth: 0.5)
+        )
+    }
+
+    private func fieldRow(label: String, value: String, fieldName: String) -> some View {
+        HStack(spacing: 12) {
+            ThemeFieldRow(label: label, value: value)
+            Spacer(minLength: 8)
             copyButton(value, fieldName: fieldName)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor))
+        .padding(.vertical, 11)
+        .background(Theme.bgField)
     }
 
-    private var passwordCard: some View {
-        HStack {
+    private var passwordRow: some View {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Password")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Text("PASSWORD")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+                    .tracking(0.6)
                 Group {
                     if showPassword {
                         Text(entry.password)
                             .fontDesign(.monospaced)
                             .textSelection(.enabled)
                     } else {
-                        Text(String(repeating: "\u{2022}", count: 16))
+                        Text(String(repeating: "\u{2022}", count: 14))
                     }
                 }
-                .font(.body)
+                .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
-                .frame(height: 18, alignment: .leading)
+                .frame(height: 16, alignment: .leading)
             }
-            Spacer(minLength: 16)
-            Button { showPassword.toggle() } label: {
+            Spacer(minLength: 8)
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showPassword.toggle() }
+            } label: {
                 Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                    .frame(width: 20)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 24, height: 24)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            .buttonStyle(.plain)
             copyButton(entry.password, fieldName: "password")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor))
+        .padding(.vertical, 11)
+        .background(Theme.bgField)
     }
 
-    // MARK: - Helpers
+    // MARK: - Notes
+
+    private func notesSection(_ notes: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ThemeSectionLabel(text: "Notes")
+            Text(notes)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Theme.bgField)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                        .stroke(Theme.borderSoft, lineWidth: 0.5)
+                )
+        }
+    }
+
+    // MARK: - Metadata
+
+    private var metadata: some View {
+        HStack(spacing: 24) {
+            metaItem("Created", date: entry.createdAt)
+            metaItem("Modified", date: entry.modifiedAt)
+            Spacer()
+        }
+    }
+
+    private func metaItem(_ label: String, date: Date) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Theme.textTertiary)
+                .tracking(0.5)
+            Text(date, style: .date)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // MARK: - Copy
 
     private func copyButton(_ value: String, fieldName: String) -> some View {
         Button {
             viewModel.copyToClipboard(value)
-            withAnimation(.easeInOut(duration: 0.2)) { copiedField = fieldName }
+            withAnimation(.easeInOut(duration: 0.15)) { copiedField = fieldName }
             Task {
                 try? await Task.sleep(for: .seconds(2))
                 withAnimation { if copiedField == fieldName { copiedField = nil } }
             }
         } label: {
-            Image(systemName: copiedField == fieldName ? "checkmark.circle.fill" : "doc.on.doc")
-                .frame(width: 20)
-                .foregroundStyle(copiedField == fieldName ? .green : .secondary)
+            Image(systemName: copiedField == fieldName ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(copiedField == fieldName ? .green : Theme.textTertiary)
+                .frame(width: 24, height: 24)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help(copiedField == fieldName ? "Copied" : "Copy \(fieldName)")
-    }
-
-    private func metadataLabel(_ label: String, date: Date) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
-            Text(date, style: .date)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
     }
 
     private func safeURL(_ string: String) -> URL? {
         guard let url = URL(string: string),
               let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http" else {
-            return nil
-        }
+              scheme == "https" || scheme == "http" else { return nil }
         return url
     }
 }

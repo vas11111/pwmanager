@@ -9,7 +9,7 @@ struct CreateVaultView: View {
         password.count >= 8 && password == confirm
     }
 
-    private var validationMessage: (String, Color)? {
+    private var feedback: (String, Color)? {
         if !password.isEmpty && password.count < 8 {
             return ("At least 8 characters required", .orange)
         }
@@ -23,75 +23,54 @@ struct CreateVaultView: View {
     }
 
     var body: some View {
-        VStack {
-            Spacer()
+        ZStack {
+            Color(.windowBackgroundColor).ignoresSafeArea()
 
-            VStack(spacing: 28) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.tint)
-
-                VStack(spacing: 6) {
-                    Text("Create Your Vault")
-                        .font(.title2.weight(.semibold))
-
-                    Text("Choose a strong master password.\nThis is the only password you'll need to remember.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(spacing: 10) {
-                    SecureField("Master Password", text: $password)
-                    SecureField("Confirm Password", text: $confirm)
-                }
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 300)
-
-                // Fixed-height validation area — prevents layout shift
-                Group {
-                    if let (message, color) = validationMessage {
-                        Text(message)
-                            .foregroundStyle(color)
-                    } else {
-                        Text(" ")
+            ThemeCard {
+                VStack(spacing: 24) {
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(Theme.accent.opacity(0.12))
+                            .frame(width: 64, height: 64)
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(Theme.accent)
                     }
-                }
-                .font(.caption)
-                .frame(height: 16)
 
-                Button {
-                    viewModel.createVault(password: password, confirm: confirm)
-                } label: {
-                    Group {
-                        if viewModel.isProcessing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Create Vault")
-                        }
+                    VStack(spacing: 6) {
+                        Text("Create Your Vault")
+                            .font(.system(size: 20, weight: .bold))
+                            .tracking(-0.3)
+
+                        Text("Choose a strong master password.\nThis is the only password you'll need.")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
                     }
-                    .frame(width: 200, height: 20)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(!isValid || viewModel.isProcessing)
-            }
-            .padding(36)
-            .background {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.background)
-                    .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5)
-            }
 
-            Spacer()
+                    VStack(spacing: 8) {
+                        ThemeTextField(placeholder: "Master Password", text: $password, isSecure: true)
+                        ThemeTextField(placeholder: "Confirm Password", text: $confirm, isSecure: true)
+                    }
+                    .frame(width: 280)
+
+                    Text(feedback?.0 ?? " ")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(feedback?.1 ?? .clear)
+                        .frame(height: 14)
+
+                    ThemePrimaryButton(
+                        label: "Create Vault",
+                        isLoading: viewModel.isProcessing
+                    ) {
+                        viewModel.createVault(password: password, confirm: confirm)
+                    }
+                    .disabled(!isValid || viewModel.isProcessing)
+                }
+            }
+            .frame(width: 380)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.windowBackgroundColor))
     }
 }

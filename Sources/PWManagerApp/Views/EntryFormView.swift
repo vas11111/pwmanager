@@ -35,107 +35,125 @@ struct EntryFormView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar
-            Text(existing == nil ? "New Entry" : "Edit Entry")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(.bar)
-
-            Divider()
-
-            Form {
-                Section {
-                    TextField("Site Name", text: $siteName)
-                    TextField("Username or Email", text: $username)
-                    TextField("URL", text: $url)
-                        .textContentType(.URL)
-                }
-
-                Section {
-                    HStack(spacing: 8) {
-                        Group {
-                            if showPassword {
-                                TextField("Password", text: $password)
-                                    .fontDesign(.monospaced)
-                            } else {
-                                SecureField("Password", text: $password)
-                            }
-                        }
-                        .frame(minWidth: 200)
-
-                        Button {
-                            showPassword.toggle()
-                        } label: {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .frame(width: 18)
-                        }
-                        .buttonStyle(.borderless)
-
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showGenerator.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "wand.and.stars")
-                                .frame(width: 18)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Password generator")
-                    }
-
-                    if showGenerator {
-                        generatorControls
-                    }
-                } header: {
-                    Text("Password")
-                }
-
-                Section("Notes") {
-                    TextEditor(text: $notes)
-                        .frame(height: 72)
-                        .font(.body)
-                }
+            // Header
+            HStack {
+                Text(existing == nil ? "New Entry" : "Edit Entry")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
             }
-            .formStyle(.grouped)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
 
-            Divider()
+            Divider().opacity(0.5)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Details
+                    VStack(alignment: .leading, spacing: 12) {
+                        ThemeSectionLabel(text: "Details")
+                        VStack(spacing: 8) {
+                            ThemeTextField(placeholder: "Site Name", text: $siteName)
+                            ThemeTextField(placeholder: "Username or Email", text: $username)
+                            ThemeTextField(placeholder: "URL (optional)", text: $url)
+                        }
+                    }
+
+                    // Password
+                    VStack(alignment: .leading, spacing: 12) {
+                        ThemeSectionLabel(text: "Password")
+                        HStack(spacing: 8) {
+                            ThemeTextField(
+                                placeholder: "Password",
+                                text: $password,
+                                isSecure: !showPassword
+                            )
+
+                            Button {
+                                showPassword.toggle()
+                            } label: {
+                                Image(systemName: showPassword ? "eye.slash" : "eye")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.textTertiary)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showGenerator.toggle()
+                                }
+                            } label: {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(showGenerator ? Theme.accent : Theme.textTertiary)
+                        }
+
+                        if showGenerator {
+                            generatorControls
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+
+                    // Notes
+                    VStack(alignment: .leading, spacing: 12) {
+                        ThemeSectionLabel(text: "Notes")
+                        TextEditor(text: $notes)
+                            .font(.system(size: 13, weight: .medium))
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .frame(height: 72)
+                            .background(Theme.bgField)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Theme.borderSoft, lineWidth: 0.5)
+                            )
+                    }
+                }
+                .padding(24)
+            }
+
+            Divider().opacity(0.5)
+
+            // Footer
             HStack {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(existing == nil ? "Add Entry" : "Save") {
-                    save()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(!isValid)
+                Button(existing == nil ? "Add Entry" : "Save") { save() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!isValid)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
-        .frame(width: 460, height: 520)
+        .frame(width: 460, height: 540)
     }
+
+    // MARK: - Generator
 
     private var generatorControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Length: \(Int(genLength))")
-                    .font(.callout)
+                    .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
                     .frame(width: 70, alignment: .leading)
                 Slider(value: $genLength, in: 8...64, step: 1)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 14) {
                 Toggle("a-z", isOn: $genLowercase)
                 Toggle("A-Z", isOn: $genUppercase)
                 Toggle("0-9", isOn: $genDigits)
                 Toggle("#$%", isOn: $genSymbols)
             }
             .toggleStyle(.checkbox)
-            .font(.callout)
+            .font(.system(size: 11, weight: .medium))
 
             Button {
                 password = generatePassword()
@@ -143,13 +161,19 @@ struct EntryFormView: View {
                 showPassword = true
             } label: {
                 Text("Generate & Fill")
+                    .font(.system(size: 11, weight: .semibold))
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .background(Theme.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
+
+    // MARK: - Actions
 
     private func save() {
         if var entry = existing {

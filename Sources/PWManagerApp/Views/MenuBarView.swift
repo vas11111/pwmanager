@@ -13,71 +13,82 @@ struct MenuBarView: View {
                 lockedContent
             }
 
-            Divider()
+            Divider().opacity(0.3)
 
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
-                Label("Quit PWManager", systemImage: "power")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    Text("Quit")
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    Text("\u{2318}Q")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
         .frame(width: 280)
     }
 
     private var lockedContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: "lock.fill")
-                .font(.title3)
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.tertiary)
             Text("Vault is locked")
-                .font(.callout)
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
         }
-        .frame(height: 80)
+        .frame(height: 72)
     }
 
     private var unlockedContent: some View {
         VStack(spacing: 0) {
-            TextField("Search...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
+            ThemeTextField(placeholder: "Search...", text: $searchText)
                 .padding(10)
 
             let results = filteredEntries
             if results.isEmpty {
                 Text(searchText.isEmpty ? "No entries" : "No matches")
-                    .font(.caption)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.tertiary)
-                    .frame(height: 48)
+                    .frame(height: 44)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(results.prefix(8)) { entry in
                             MenuBarEntryRow(entry: entry, viewModel: viewModel)
-                            if entry.id != results.prefix(8).last?.id {
-                                Divider().padding(.leading, 12)
-                            }
                         }
                     }
                 }
-                .frame(maxHeight: 280)
+                .frame(maxHeight: 260)
             }
 
-            Divider()
+            Divider().opacity(0.3)
 
             Button {
                 viewModel.lock()
             } label: {
-                Label("Lock Vault", systemImage: "lock.fill")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Lock Vault")
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    Text("\u{2318}L")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
     }
 
@@ -96,39 +107,47 @@ struct MenuBarView: View {
 private struct MenuBarEntryRow: View {
     let entry: PasswordEntry
     let viewModel: VaultViewModel
+    @State private var isHovered = false
     @State private var copied = false
 
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.siteName)
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 Text(entry.username)
-                    .font(.caption)
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 8)
 
-            Button {
-                viewModel.copyToClipboard(entry.password)
-                withAnimation(.easeInOut(duration: 0.2)) { copied = true }
-                Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    withAnimation { copied = false }
+            if isHovered || copied {
+                Button {
+                    viewModel.copyToClipboard(entry.password)
+                    withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.5))
+                        withAnimation { copied = false }
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(copied ? .green : .secondary)
                 }
-            } label: {
-                Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
-                    .font(.caption)
-                    .foregroundStyle(copied ? .green : .secondary)
+                .buttonStyle(.plain)
+                .transition(.opacity)
             }
-            .buttonStyle(.borderless)
-            .help("Copy password")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(isHovered ? Theme.bgHover : .clear)
+        )
+        .onHover { isHovered = $0 }
         .contentShape(Rectangle())
     }
 }
