@@ -22,6 +22,10 @@ struct EntryDetailView: View {
                     tableRow(label: "Website", value: url)
                 }
 
+                if let secret = entry.totpSecret, !secret.isEmpty {
+                    totpRow(secret)
+                }
+
                 if let notes = entry.notes, !notes.isEmpty {
                     notesRow(notes)
                 }
@@ -128,6 +132,22 @@ struct EntryDetailView: View {
                 .buttonStyle(GhostButtonStyle())
 
                 copyButton(entry.password)
+            }
+            .padding(.vertical, 12)
+
+            Divider().overlay(Theme.border)
+        }
+    }
+
+    private func totpRow(_ secret: String) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("2FA Code")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .frame(width: 80, alignment: .leading)
+
+                TOTPView(secret: secret, viewModel: viewModel)
             }
             .padding(.vertical, 12)
 

@@ -632,3 +632,63 @@ struct PasswordGeneratorTests {
         #expect(pw.allSatisfy { $0.isNumber })
     }
 }
+
+// MARK: - TOTP Generator
+
+@Suite("TOTP Generator")
+struct TOTPGeneratorTests {
+    // RFC 6238 test vector: secret "12345678901234567890" at time 59
+    @Test func rfc6238TestVector() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // Base32 of full 20-byte ASCII secret
+        let time = Date(timeIntervalSince1970: 59)
+        let code = TOTPGenerator.generateCode(secret: secret, time: time)
+        #expect(code == "287082")
+    }
+
+    @Test func generates6DigitCode() {
+        let code = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP")
+        #expect(code != nil)
+        #expect(code?.count == 6)
+        #expect(code?.allSatisfy { $0.isNumber } == true)
+    }
+
+    @Test func invalidSecretReturnsNil() {
+        #expect(TOTPGenerator.generateCode(secret: "!!!invalid!!!") == nil)
+        #expect(TOTPGenerator.generateCode(secret: "") == nil)
+    }
+
+    @Test func sameTimeProducesSameCode() {
+        let time = Date(timeIntervalSince1970: 1000000)
+        let code1 = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP", time: time)
+        let code2 = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP", time: time)
+        #expect(code1 == code2)
+    }
+
+    @Test func differentPeriodsProduceDifferentCodes() {
+        let time1 = Date(timeIntervalSince1970: 0)
+        let time2 = Date(timeIntervalSince1970: 30)
+        let code1 = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP", time: time1)
+        let code2 = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP", time: time2)
+        #expect(code1 != code2)
+    }
+
+    @Test func isValidSecretWorks() {
+        #expect(TOTPGenerator.isValidSecret("JBSWY3DPEHPK3PXP"))
+        #expect(!TOTPGenerator.isValidSecret("!!!"))
+        #expect(!TOTPGenerator.isValidSecret(""))
+    }
+
+    @Test func timeRemainingIsInRange() {
+        let remaining = TOTPGenerator.timeRemaining()
+        #expect(remaining > 0)
+        #expect(remaining <= 30)
+    }
+
+    @Test func secretWithSpacesAndDashes() {
+        let code1 = TOTPGenerator.generateCode(secret: "JBSWY3DPEHPK3PXP")
+        let code2 = TOTPGenerator.generateCode(secret: "JBSW Y3DP EHPK 3PXP")
+        let code3 = TOTPGenerator.generateCode(secret: "JBSW-Y3DP-EHPK-3PXP")
+        #expect(code1 == code2)
+        #expect(code1 == code3)
+    }
+}

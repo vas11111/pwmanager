@@ -11,6 +11,7 @@ struct InlineFormView: View {
     @State private var password: String
     @State private var url: String
     @State private var notes: String
+    @State private var totpSecret: String
     @State private var showPassword = false
     @State private var showGenerator = false
     @State private var genLength: Double = 24
@@ -28,6 +29,7 @@ struct InlineFormView: View {
         _password = State(initialValue: existing?.password ?? "")
         _url = State(initialValue: existing?.url ?? "")
         _notes = State(initialValue: existing?.notes ?? "")
+        _totpSecret = State(initialValue: existing?.totpSecret ?? "")
     }
 
     private var isValid: Bool { !siteName.isEmpty && !username.isEmpty && !password.isEmpty }
@@ -121,6 +123,22 @@ struct InlineFormView: View {
                     }
                     .padding(.vertical, 12)
                     Divider().overlay(Theme.border)
+                }
+
+                formRow(label: "2FA Secret") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ThemeTextField(placeholder: "Base32 secret (optional)", text: $totpSecret)
+                        if !totpSecret.isEmpty {
+                            if TOTPGenerator.isValidSecret(totpSecret) {
+                                TOTPView(secret: totpSecret, viewModel: viewModel)
+                                    .padding(.top, 4)
+                            } else {
+                                Text("Invalid secret")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                    }
                 }
 
                 formRow(label: "Notes") {
@@ -222,15 +240,17 @@ struct InlineFormView: View {
     // MARK: - Actions
 
     private func save() {
+        let cleanTOTP = totpSecret.isEmpty ? nil : totpSecret
         if var entry = existing {
             entry.siteName = siteName
             entry.username = username
             entry.password = password
             entry.url = url.isEmpty ? nil : url
             entry.notes = notes.isEmpty ? nil : notes
+            entry.totpSecret = cleanTOTP
             viewModel.updateEntry(entry)
         } else {
-            viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes)
+            viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes, totpSecret: cleanTOTP)
         }
         onClose()
     }

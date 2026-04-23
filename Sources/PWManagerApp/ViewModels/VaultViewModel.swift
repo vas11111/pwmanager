@@ -234,7 +234,8 @@ final class VaultViewModel {
         username: String,
         password: String,
         url: String?,
-        notes: String?
+        notes: String?,
+        totpSecret: String? = nil
     ) {
         guard state == .unlocked else { return }
         let cleanURL = sanitizeURL(url)
@@ -243,7 +244,8 @@ final class VaultViewModel {
             username: username,
             password: password,
             url: cleanURL,
-            notes: notes?.isEmpty == true ? nil : notes
+            notes: notes?.isEmpty == true ? nil : notes,
+            totpSecret: totpSecret
         )
         do {
             try manager.addEntry(entry)

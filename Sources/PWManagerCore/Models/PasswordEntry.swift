@@ -7,6 +7,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
     public var password: String
     public var url: String?
     public var notes: String?
+    public var totpSecret: String?
     public let createdAt: Date
     public var modifiedAt: Date
 
@@ -17,6 +18,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
         password: String,
         url: String? = nil,
         notes: String? = nil,
+        totpSecret: String? = nil,
         createdAt: Date = Date(),
         modifiedAt: Date = Date()
     ) {
@@ -26,6 +28,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
         self.password = password
         self.url = url
         self.notes = notes
+        self.totpSecret = totpSecret
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
     }
