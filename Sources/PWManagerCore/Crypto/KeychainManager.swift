@@ -60,6 +60,7 @@ public struct KeychainManager: Sendable {
     }
 
     func generateAndStoreDeviceKey() throws -> Data {
+        try? deleteDeviceKey()
         var bytes = [UInt8](repeating: 0, count: Self.deviceKeyLength)
         let status = SecRandomCopyBytes(kSecRandomDefault, Self.deviceKeyLength, &bytes)
         precondition(status == errSecSuccess, "System RNG failure")

@@ -28,11 +28,19 @@ final class VaultViewModel {
 
     nonisolated(unsafe) private let manager: PasswordManager
     private var inflightTask: Task<Void, Never>?
-    private var failedAttempts = 0
-    private var lockoutUntil: Date?
+
+    @ObservationIgnored
+    @AppStorage("failedUnlockAttempts") private var failedAttempts = 0
+    @ObservationIgnored
+    @AppStorage("lockoutUntilTimestamp") private var lockoutUntilTimestamp: Double = 0
 
     @ObservationIgnored
     @AppStorage("clipboardClearSeconds") private var clipboardClearSeconds = 30
+
+    private var lockoutUntil: Date? {
+        get { lockoutUntilTimestamp > 0 ? Date(timeIntervalSince1970: lockoutUntilTimestamp) : nil }
+        set { lockoutUntilTimestamp = newValue?.timeIntervalSince1970 ?? 0 }
+    }
 
     private static let maxFailedAttempts = 5
     private static let lockoutDuration: TimeInterval = 30
