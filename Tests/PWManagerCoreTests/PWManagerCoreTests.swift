@@ -637,12 +637,22 @@ struct PasswordGeneratorTests {
 
 @Suite("TOTP Generator")
 struct TOTPGeneratorTests {
-    // RFC 6238 test vector: secret "12345678901234567890" at time 59
-    @Test func rfc6238TestVector() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // Base32 of full 20-byte ASCII secret
-        let time = Date(timeIntervalSince1970: 59)
-        let code = TOTPGenerator.generateCode(secret: secret, time: time)
-        #expect(code == "287082")
+    // All five RFC 6238 SHA-1 test vectors (Appendix B)
+    @Test func rfc6238TestVectors() {
+        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+        let vectors: [(Double, String)] = [
+            (59,          "287082"),
+            (1111111109,  "081804"),
+            (1111111111,  "050471"),
+            (1234567890,  "005924"),
+            (2000000000,  "279037"),
+        ]
+        for (timestamp, expected) in vectors {
+            let code = TOTPGenerator.generateCode(
+                secret: secret, time: Date(timeIntervalSince1970: timestamp)
+            )
+            #expect(code == expected, "t=\(Int(timestamp)): got \(code ?? "nil"), expected \(expected)")
+        }
     }
 
     @Test func generates6DigitCode() {
