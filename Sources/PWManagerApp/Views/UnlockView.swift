@@ -3,6 +3,13 @@ import SwiftUI
 struct UnlockView: View {
     let viewModel: VaultViewModel
     @State private var password = ""
+    @AppStorage("touchIDEnabled") private var touchIDEnabled = false
+
+    private var canUseTouchID: Bool {
+        touchIDEnabled
+            && viewModel.biometricService.isAvailable
+            && viewModel.biometricService.hasStoredPassword
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -34,26 +41,46 @@ struct UnlockView: View {
                 }
             }
 
-            Button {
-                unlock()
-            } label: {
-                if viewModel.isProcessing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 200)
-                } else {
-                    Text("Unlock")
-                        .frame(width: 200)
+            HStack(spacing: 12) {
+                Button {
+                    unlock()
+                } label: {
+                    if viewModel.isProcessing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 140)
+                    } else {
+                        Text("Unlock")
+                            .frame(width: 140)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(password.isEmpty || viewModel.isProcessing)
+
+                if canUseTouchID {
+                    Button {
+                        viewModel.unlockWithBiometrics()
+                    } label: {
+                        Image(systemName: "touchid")
+                            .font(.title2)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(viewModel.isProcessing)
+                    .help("Unlock with Touch ID")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(password.isEmpty || viewModel.isProcessing)
 
             Spacer()
         }
         .padding(40)
         .frame(minWidth: 440, minHeight: 380)
+        .task {
+            if canUseTouchID && !viewModel.isProcessing {
+                viewModel.unlockWithBiometrics()
+            }
+        }
     }
 
     private func unlock() {

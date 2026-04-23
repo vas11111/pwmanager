@@ -25,6 +25,15 @@ struct PWManagerApp: App {
             AppCommands(viewModel: viewModel)
         }
         .defaultSize(width: 800, height: 500)
+
+        Settings {
+            SettingsView()
+        }
+
+        MenuBarExtra("PWManager", systemImage: "lock.shield") {
+            MenuBarView(viewModel: viewModel)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -46,6 +55,14 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("l", modifiers: .command)
             .disabled(viewModel.state != .unlocked)
+
+            Divider()
+
+            Button("Copy Password") {
+                viewModel.copySelectedPassword()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(viewModel.state != .unlocked || viewModel.selectedEntry == nil)
         }
     }
 }

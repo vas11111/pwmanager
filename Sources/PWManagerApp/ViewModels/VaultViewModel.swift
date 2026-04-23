@@ -22,12 +22,17 @@ final class VaultViewModel {
     var selectedEntryID: UUID?
     var showingAddEntry = false
 
+    let biometricService = BiometricService()
+    let autoLockService = AutoLockService()
+
     nonisolated(unsafe) private let manager: PasswordManager
     private var inflightTask: Task<Void, Never>?
     private var failedAttempts = 0
     private var lockoutUntil: Date?
 
-    private static let clipboardClearDelay: TimeInterval = 30
+    @ObservationIgnored
+    @AppStorage("clipboardClearSeconds") private var clipboardClearSeconds = 30
+
     private static let maxFailedAttempts = 5
     private static let lockoutDuration: TimeInterval = 30
 
@@ -60,7 +65,12 @@ final class VaultViewModel {
         return max(0, Int(until.timeIntervalSinceNow.rounded(.up)))
     }
 
+    // MARK: - Lifecycle
+
     func checkVaultStatus() {
+        biometricService.checkAvailability()
+        autoLockService.onLock = { [weak self] in self?.lock() }
+
         if PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
             state = .locked
         } else {
@@ -90,6 +100,8 @@ final class VaultViewModel {
                     self.isProcessing = false
                     self.refreshEntries()
                     self.state = .unlocked
+                    self.autoLockService.start()
+                    self.offerTouchID(password: password)
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -125,6 +137,8 @@ final class VaultViewModel {
                     self.lockoutUntil = nil
                     self.refreshEntries()
                     self.state = .unlocked
+                    self.autoLockService.start()
+                    self.offerTouchID(password: password)
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -143,16 +157,41 @@ final class VaultViewModel {
         }
     }
 
+    func unlockWithBiometrics() {
+        guard biometricService.isAvailable, biometricService.hasStoredPassword else { return }
+        errorMessage = nil
+        isProcessing = true
+
+        Task {
+            do {
+                let password = try await biometricService.retrievePassword()
+                await MainActor.run { self.isProcessing = false }
+                unlock(password: password)
+            } catch is BiometricError {
+                isProcessing = false
+            } catch {
+                isProcessing = false
+                errorMessage = "Touch ID failed."
+            }
+        }
+    }
+
     func lock() {
         inflightTask?.cancel()
         inflightTask = nil
         isProcessing = false
+        autoLockService.stop()
         manager.lock()
         entries = []
         selectedEntryID = nil
         searchText = ""
         errorMessage = nil
         state = .locked
+    }
+
+    func copySelectedPassword() {
+        guard let entry = selectedEntry else { return }
+        copyToClipboard(entry.password)
     }
 
     // MARK: - Entry Management
@@ -217,12 +256,25 @@ final class VaultViewModel {
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
 
+        let clearDelay = clipboardClearSeconds
+        guard clearDelay > 0 else { return }
+
         Task {
-            try? await Task.sleep(for: .seconds(Self.clipboardClearDelay))
+            try? await Task.sleep(for: .seconds(clearDelay))
             if pasteboard.changeCount == changeCount + 1 {
                 pasteboard.clearContents()
             }
         }
+    }
+
+    // MARK: - Touch ID
+
+    @ObservationIgnored
+    @AppStorage("touchIDEnabled") private var touchIDEnabled = false
+
+    private func offerTouchID(password: String) {
+        guard touchIDEnabled, biometricService.isAvailable else { return }
+        try? biometricService.storePassword(password)
     }
 
     // MARK: - Errors
