@@ -35,6 +35,7 @@ final class VaultViewModel {
 
     private static let maxFailedAttempts = 5
     private static let lockoutDuration: TimeInterval = 30
+    private static let minimumClipboardClear = 10
 
     init() {
         self.manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
@@ -79,6 +80,7 @@ final class VaultViewModel {
     }
 
     func createVault(password: String, confirm: String) {
+        guard state == .needsSetup else { return }
         guard password == confirm else {
             errorMessage = "Passwords do not match."
             return
@@ -96,7 +98,7 @@ final class VaultViewModel {
             do {
                 try box.value.createVault(masterPassword: password)
                 await MainActor.run {
-                    guard self.isProcessing else { return }
+                    guard self.isProcessing, self.state == .needsSetup else { return }
                     self.isProcessing = false
                     self.refreshEntries()
                     self.state = .unlocked
@@ -114,6 +116,7 @@ final class VaultViewModel {
     }
 
     func unlock(password: String) {
+        guard state == .locked else { return }
         guard !password.isEmpty else {
             errorMessage = "Enter your master password."
             return
@@ -131,7 +134,7 @@ final class VaultViewModel {
             do {
                 try box.value.unlock(masterPassword: password)
                 await MainActor.run {
-                    guard self.isProcessing else { return }
+                    guard self.isProcessing, self.state == .locked else { return }
                     self.isProcessing = false
                     self.failedAttempts = 0
                     self.lockoutUntil = nil
@@ -158,15 +161,20 @@ final class VaultViewModel {
     }
 
     func unlockWithBiometrics() {
+        guard state == .locked else { return }
         guard biometricService.isAvailable, biometricService.hasStoredPassword else { return }
+        guard !isProcessing else { return }
         errorMessage = nil
         isProcessing = true
 
         Task {
             do {
                 let password = try await biometricService.retrievePassword()
-                await MainActor.run { self.isProcessing = false }
-                unlock(password: password)
+                await MainActor.run {
+                    self.isProcessing = false
+                    guard self.state == .locked else { return }
+                    self.unlock(password: password)
+                }
             } catch is BiometricError {
                 isProcessing = false
             } catch {
@@ -190,7 +198,7 @@ final class VaultViewModel {
     }
 
     func copySelectedPassword() {
-        guard let entry = selectedEntry else { return }
+        guard state == .unlocked, let entry = selectedEntry else { return }
         copyToClipboard(entry.password)
     }
 
@@ -203,11 +211,13 @@ final class VaultViewModel {
         url: String?,
         notes: String?
     ) {
+        guard state == .unlocked else { return }
+        let cleanURL = sanitizeURL(url)
         let entry = PasswordEntry(
             siteName: siteName,
             username: username,
             password: password,
-            url: url?.isEmpty == true ? nil : url,
+            url: cleanURL,
             notes: notes?.isEmpty == true ? nil : notes
         )
         do {
@@ -220,8 +230,10 @@ final class VaultViewModel {
     }
 
     func updateEntry(_ entry: PasswordEntry) {
+        guard state == .unlocked else { return }
         var updated = entry
         updated.modifiedAt = Date()
+        updated.url = sanitizeURL(updated.url)
         do {
             try manager.updateEntry(updated)
             refreshEntries()
@@ -231,6 +243,7 @@ final class VaultViewModel {
     }
 
     func deleteEntry(id: UUID) {
+        guard state == .unlocked else { return }
         do {
             try manager.deleteEntry(id: id)
             if selectedEntryID == id { selectedEntryID = nil }
@@ -251,17 +264,20 @@ final class VaultViewModel {
     // MARK: - Clipboard
 
     func copyToClipboard(_ value: String) {
+        guard state == .unlocked else { return }
         let pasteboard = NSPasteboard.general
-        let changeCount = pasteboard.changeCount
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
 
-        let clearDelay = clipboardClearSeconds
-        guard clearDelay > 0 else { return }
+        // Also set concealed type so clipboard managers are less likely to capture
+        pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+
+        let changeCount = pasteboard.changeCount
+        let clearDelay = max(clipboardClearSeconds, Self.minimumClipboardClear)
 
         Task {
             try? await Task.sleep(for: .seconds(clearDelay))
-            if pasteboard.changeCount == changeCount + 1 {
+            if pasteboard.changeCount == changeCount {
                 pasteboard.clearContents()
             }
         }
@@ -277,11 +293,26 @@ final class VaultViewModel {
         try? biometricService.storePassword(password)
     }
 
+    // MARK: - URL Validation
+
+    private func sanitizeURL(_ url: String?) -> String? {
+        guard let url, !url.isEmpty else { return nil }
+        if let parsed = URL(string: url),
+           let scheme = parsed.scheme?.lowercased(),
+           scheme == "https" || scheme == "http" {
+            return url
+        }
+        if !url.contains("://") {
+            return "https://\(url)"
+        }
+        return nil
+    }
+
     // MARK: - Errors
 
     private static func friendlyError(_ error: any Error) -> String {
         guard let pwError = error as? PasswordManagerError else {
-            return error.localizedDescription
+            return "An unexpected error occurred."
         }
         switch pwError {
         case .incorrectPassword: return "Incorrect master password."

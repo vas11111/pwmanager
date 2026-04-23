@@ -12,7 +12,7 @@ struct SettingsView: View {
             securityTab
                 .tabItem { Label("Security", systemImage: "lock.shield") }
         }
-        .frame(width: 420, height: 280)
+        .frame(width: 420, height: 300)
         .task { biometricService.checkAvailability() }
     }
 
@@ -24,16 +24,14 @@ struct SettingsView: View {
                     Text("5 minutes").tag(5)
                     Text("15 minutes").tag(15)
                     Text("30 minutes").tag(30)
-                    Text("Never").tag(0)
                 }
             }
 
             Section("Clipboard") {
                 Picker("Clear clipboard after", selection: $clipboardClearSeconds) {
-                    Text("15 seconds").tag(15)
+                    Text("10 seconds").tag(10)
                     Text("30 seconds").tag(30)
                     Text("60 seconds").tag(60)
-                    Text("Never").tag(0)
                 }
             }
 

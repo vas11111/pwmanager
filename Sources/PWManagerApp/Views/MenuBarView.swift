@@ -33,6 +33,9 @@ struct MenuBarView: View {
             .buttonStyle(.plain)
         }
         .frame(width: 280)
+        .onChange(of: viewModel.state) { _, newState in
+            if newState != .unlocked { searchText = "" }
+        }
     }
 
     private var lockedContent: some View {
@@ -126,6 +129,7 @@ private struct MenuBarEntryRow: View {
 
             if isHovered || copied {
                 Button {
+                    guard viewModel.state == .unlocked else { return }
                     viewModel.copyToClipboard(entry.password)
                     withAnimation(.easeInOut(duration: 0.15)) { copied = true }
                     Task {

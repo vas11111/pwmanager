@@ -101,6 +101,9 @@ struct UnlockView: View {
                 viewModel.unlockWithBiometrics()
             }
         }
+        .onChange(of: viewModel.state) { _, newState in
+            if newState == .unlocked { password = "" }
+        }
     }
 
     private func unlock() {
