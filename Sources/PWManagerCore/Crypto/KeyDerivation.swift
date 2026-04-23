@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import Argon2
+import VendoredArgon2
 
 enum KeyDerivationError: Error, Sendable {
     case passwordTooShort(minimum: Int)

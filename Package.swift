@@ -14,15 +14,27 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/leif-ibsen/SwiftKyber", from: "3.5.0"),
-        .package(url: "https://github.com/dugleelabs/swift-argon2.git", from: "1.0.0"),
+        .package(url: "https://github.com/leif-ibsen/SwiftKyber", exact: "3.5.0"),
     ],
     targets: [
+        // Vendored C implementation of Argon2 (phc-winner-argon2)
+        .target(
+            name: "CArgon2",
+            path: "Sources/CArgon2",
+            publicHeadersPath: "include",
+            cSettings: [.headerSearchPath("."), .headerSearchPath("blake2")]
+        ),
+        // Swift wrapper around vendored CArgon2
+        .target(
+            name: "VendoredArgon2",
+            dependencies: ["CArgon2"],
+            path: "Sources/VendoredArgon2"
+        ),
         .target(
             name: "PWManagerCore",
             dependencies: [
                 "SwiftKyber",
-                .product(name: "Argon2", package: "swift-argon2"),
+                "VendoredArgon2",
             ],
             path: "Sources/PWManagerCore"
         ),
