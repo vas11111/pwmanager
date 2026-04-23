@@ -12,18 +12,20 @@ public enum PasswordManagerError: Error, Sendable {
     case passwordTooShort(minimum: Int)
     case metadataTampered
     case deviceKeyMissing
+    case weakKDFParams
 }
 
 public final class PasswordManager {
     private let fileURL: URL
     private let keychain: KeychainManager
+    private let stateLock = NSLock()
     private var vaultData: VaultData?
     private var vaultKey: SymmetricKey?
     private var vaultFileMetadata: VaultFile?
 
-    public var isUnlocked: Bool { vaultData != nil }
+    public var isUnlocked: Bool { stateLock.withLock { vaultData != nil } }
 
-    public var entryCount: Int { vaultData?.entries.count ?? 0 }
+    public var entryCount: Int { stateLock.withLock { vaultData?.entries.count ?? 0 } }
 
     public init(fileURL: URL, keychain: KeychainManager = KeychainManager()) {
         self.fileURL = fileURL
@@ -50,235 +52,272 @@ public final class PasswordManager {
         masterPassword: String,
         kdfParams: KDFParams = .default
     ) throws {
-        guard masterPassword.count >= KeyDerivation.minimumPasswordLength else {
-            throw PasswordManagerError.passwordTooShort(
-                minimum: KeyDerivation.minimumPasswordLength
-            )
+        try stateLock.withLock {
+            guard masterPassword.count >= KeyDerivation.minimumPasswordLength else {
+                throw PasswordManagerError.passwordTooShort(
+                    minimum: KeyDerivation.minimumPasswordLength
+                )
+            }
+
+            // Atomic create — fails if file already exists (no TOCTOU race)
+            guard exclusiveCreate(at: fileURL) else {
+                throw PasswordManagerError.vaultAlreadyExists
+            }
+
+            do {
+                // 1. Device key — stored in macOS Keychain, never leaves this machine
+                let deviceKey = try keychain.generateAndStoreDeviceKey()
+
+                // 2. Argon2id key derivation
+                let salt = KeyDerivation.generateSalt()
+                let masterKey = try KeyDerivation.deriveKey(
+                    from: masterPassword, salt: salt, params: kdfParams
+                )
+
+                // 3. Combine master key with device key (two-secret model)
+                let combinedKey = CryptoEngine.combineMasterWithDeviceKey(
+                    masterKey: masterKey, deviceKey: deviceKey
+                )
+
+                // 4. ML-KEM-768 post-quantum encapsulation
+                let keyPair = CryptoEngine.generateMLKEMKeyPair()
+                let encapResult = CryptoEngine.encapsulate(
+                    publicKey: keyPair.encapsulationKey
+                )
+
+                // 5. Derive vault key from combined key + quantum shared secret
+                let derivedVaultKey = CryptoEngine.deriveVaultKey(
+                    masterKey: combinedKey,
+                    quantumSecret: encapResult.sharedSecret
+                )
+
+                // 6. Encrypt vault data and ML-KEM private key
+                let emptyVault = VaultData.empty
+                let encoded = try JSONEncoder().encode(emptyVault)
+                let encryptedEntries = try CryptoEngine.encrypt(
+                    encoded, using: derivedVaultKey
+                )
+                let encryptedPrivateKey = try CryptoEngine.encrypt(
+                    Data(keyPair.decapsulationKey.keyBytes), using: combinedKey
+                )
+
+                // 7. Compute metadata HMAC
+                let metadata = VaultMetadata(
+                    version: VaultFile.currentVersion,
+                    salt: salt,
+                    kdfMemory: kdfParams.memory,
+                    kdfIterations: kdfParams.iterations,
+                    kdfParallelism: kdfParams.parallelism,
+                    mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                    encapsulatedKey: Data(encapResult.ciphertext)
+                )
+                let hmac = CryptoEngine.computeMetadataHMAC(
+                    vaultKey: derivedVaultKey,
+                    metadata: try metadata.canonicalBytes()
+                )
+
+                // 8. Write vault file (file already created with 0600 by exclusiveCreate)
+                let file = VaultFile(
+                    version: VaultFile.currentVersion,
+                    salt: salt,
+                    kdfMemory: kdfParams.memory,
+                    kdfIterations: kdfParams.iterations,
+                    kdfParallelism: kdfParams.parallelism,
+                    mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                    encryptedMLKEMPrivateKey: encryptedPrivateKey,
+                    encapsulatedKey: Data(encapResult.ciphertext),
+                    encryptedEntries: encryptedEntries,
+                    metadataHMAC: hmac
+                )
+
+                try writeVaultFile(file)
+
+                self.vaultData = emptyVault
+                self.vaultKey = derivedVaultKey
+                self.vaultFileMetadata = file
+            } catch {
+                // Clean up the exclusively-created file on any failure
+                try? FileManager.default.removeItem(at: fileURL)
+                throw error
+            }
         }
-        guard !Self.vaultExists(at: fileURL) else {
-            throw PasswordManagerError.vaultAlreadyExists
-        }
-
-        // 1. Device key — stored in macOS Keychain, never leaves this machine
-        let deviceKey = try keychain.generateAndStoreDeviceKey()
-
-        // 2. Argon2id key derivation
-        let salt = KeyDerivation.generateSalt()
-        let masterKey = try KeyDerivation.deriveKey(
-            from: masterPassword, salt: salt, params: kdfParams
-        )
-
-        // 3. Combine master key with device key (two-secret model)
-        let combinedKey = CryptoEngine.combineMasterWithDeviceKey(
-            masterKey: masterKey, deviceKey: deviceKey
-        )
-
-        // 4. ML-KEM-768 post-quantum encapsulation
-        let keyPair = CryptoEngine.generateMLKEMKeyPair()
-        let encapResult = CryptoEngine.encapsulate(publicKey: keyPair.encapsulationKey)
-
-        // 5. Derive vault key from combined key + quantum shared secret
-        let derivedVaultKey = CryptoEngine.deriveVaultKey(
-            masterKey: combinedKey,
-            quantumSecret: encapResult.sharedSecret
-        )
-
-        // 6. Encrypt vault data and ML-KEM private key
-        let emptyVault = VaultData.empty
-        let encoded = try JSONEncoder().encode(emptyVault)
-        let encryptedEntries = try CryptoEngine.encrypt(encoded, using: derivedVaultKey)
-        let encryptedPrivateKey = try CryptoEngine.encrypt(
-            Data(keyPair.decapsulationKey.keyBytes), using: combinedKey
-        )
-
-        // 7. Compute metadata HMAC (covers all unencrypted header fields)
-        let metadata = VaultMetadata(
-            version: VaultFile.currentVersion,
-            salt: salt,
-            kdfMemory: kdfParams.memory,
-            kdfIterations: kdfParams.iterations,
-            kdfParallelism: kdfParams.parallelism,
-            mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
-            encapsulatedKey: Data(encapResult.ciphertext)
-        )
-        let hmac = CryptoEngine.computeMetadataHMAC(
-            vaultKey: derivedVaultKey,
-            metadata: try metadata.canonicalBytes()
-        )
-
-        // 8. Assemble and write vault file
-        let file = VaultFile(
-            version: VaultFile.currentVersion,
-            salt: salt,
-            kdfMemory: kdfParams.memory,
-            kdfIterations: kdfParams.iterations,
-            kdfParallelism: kdfParams.parallelism,
-            mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
-            encryptedMLKEMPrivateKey: encryptedPrivateKey,
-            encapsulatedKey: Data(encapResult.ciphertext),
-            encryptedEntries: encryptedEntries,
-            metadataHMAC: hmac
-        )
-
-        try writeVaultFile(file)
-
-        // Only retain vaultKey — master key, device key, ML-KEM keys are discarded
-        self.vaultData = emptyVault
-        self.vaultKey = derivedVaultKey
-        self.vaultFileMetadata = file
     }
 
     public func unlock(masterPassword: String) throws {
-        let file = try readVaultFile()
+        try stateLock.withLock {
+            let file = try readVaultFile()
 
-        guard file.version == VaultFile.currentVersion else {
-            throw PasswordManagerError.unsupportedVaultVersion(file.version)
-        }
+            guard file.version == VaultFile.currentVersion else {
+                throw PasswordManagerError.unsupportedVaultVersion(file.version)
+            }
 
-        // 1. Retrieve device key from Keychain
-        let deviceKey: Data
-        do {
-            deviceKey = try keychain.retrieveDeviceKey()
-        } catch {
-            throw PasswordManagerError.deviceKeyMissing
-        }
+            // Reject vault files with weakened KDF parameters
+            guard file.kdfMemory >= KDFParams.minimumMemory,
+                  file.kdfIterations >= KDFParams.minimumIterations,
+                  file.kdfParallelism >= KDFParams.minimumParallelism else {
+                throw PasswordManagerError.weakKDFParams
+            }
 
-        // 2. Argon2id key derivation with stored parameters
-        let kdfParams = KDFParams(
-            memory: file.kdfMemory,
-            iterations: file.kdfIterations,
-            parallelism: file.kdfParallelism
-        )
-        let masterKey = try KeyDerivation.deriveKey(
-            from: masterPassword, salt: file.salt, params: kdfParams
-        )
+            // 1. Retrieve device key from Keychain
+            let deviceKey: Data
+            do {
+                deviceKey = try keychain.retrieveDeviceKey()
+            } catch {
+                throw PasswordManagerError.deviceKeyMissing
+            }
 
-        // 3. Combine with device key
-        let combinedKey = CryptoEngine.combineMasterWithDeviceKey(
-            masterKey: masterKey, deviceKey: deviceKey
-        )
-
-        // 4. Decrypt ML-KEM private key
-        let privateKeyData: Data
-        do {
-            privateKeyData = try CryptoEngine.decrypt(
-                file.encryptedMLKEMPrivateKey, using: combinedKey
+            // 2. Argon2id key derivation with stored parameters
+            let kdfParams = KDFParams(
+                memory: file.kdfMemory,
+                iterations: file.kdfIterations,
+                parallelism: file.kdfParallelism
             )
-        } catch {
-            throw PasswordManagerError.incorrectPassword
-        }
-
-        let mlkemPrivateKey: DecapsulationKey
-        do {
-            mlkemPrivateKey = try DecapsulationKey(keyBytes: [UInt8](privateKeyData))
-        } catch {
-            throw PasswordManagerError.incorrectPassword
-        }
-
-        // 5. Decapsulate quantum shared secret
-        let sharedSecret: [UInt8]
-        do {
-            sharedSecret = try CryptoEngine.decapsulate(
-                privateKey: mlkemPrivateKey,
-                ciphertext: [UInt8](file.encapsulatedKey)
+            let masterKey = try KeyDerivation.deriveKey(
+                from: masterPassword, salt: file.salt, params: kdfParams
             )
-        } catch {
-            throw PasswordManagerError.incorrectPassword
-        }
 
-        // 6. Derive vault key
-        let derivedVaultKey = CryptoEngine.deriveVaultKey(
-            masterKey: combinedKey,
-            quantumSecret: sharedSecret
-        )
-
-        // 7. Verify metadata HMAC before trusting any header fields
-        let metadataBytes = try file.metadata.canonicalBytes()
-        guard CryptoEngine.verifyMetadataHMAC(
-            vaultKey: derivedVaultKey,
-            metadata: metadataBytes,
-            expectedHMAC: file.metadataHMAC
-        ) else {
-            throw PasswordManagerError.metadataTampered
-        }
-
-        // 8. Decrypt vault entries
-        let decryptedData: Data
-        do {
-            decryptedData = try CryptoEngine.decrypt(
-                file.encryptedEntries, using: derivedVaultKey
+            // 3. Combine with device key
+            let combinedKey = CryptoEngine.combineMasterWithDeviceKey(
+                masterKey: masterKey, deviceKey: deviceKey
             )
-        } catch {
-            throw PasswordManagerError.incorrectPassword
+
+            // 4. Decrypt ML-KEM private key
+            let privateKeyData: Data
+            do {
+                privateKeyData = try CryptoEngine.decrypt(
+                    file.encryptedMLKEMPrivateKey, using: combinedKey
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let mlkemPrivateKey: DecapsulationKey
+            do {
+                mlkemPrivateKey = try DecapsulationKey(
+                    keyBytes: [UInt8](privateKeyData)
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            // 5. Decapsulate quantum shared secret
+            let sharedSecret: [UInt8]
+            do {
+                sharedSecret = try CryptoEngine.decapsulate(
+                    privateKey: mlkemPrivateKey,
+                    ciphertext: [UInt8](file.encapsulatedKey)
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            // 6. Derive vault key
+            let derivedVaultKey = CryptoEngine.deriveVaultKey(
+                masterKey: combinedKey,
+                quantumSecret: sharedSecret
+            )
+
+            // 7. Verify metadata HMAC before trusting any header fields
+            let metadataBytes = try file.metadata.canonicalBytes()
+            guard CryptoEngine.verifyMetadataHMAC(
+                vaultKey: derivedVaultKey,
+                metadata: metadataBytes,
+                expectedHMAC: file.metadataHMAC
+            ) else {
+                throw PasswordManagerError.metadataTampered
+            }
+
+            // 8. Decrypt vault entries
+            let decryptedData: Data
+            do {
+                decryptedData = try CryptoEngine.decrypt(
+                    file.encryptedEntries, using: derivedVaultKey
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let vault = try JSONDecoder().decode(VaultData.self, from: decryptedData)
+
+            self.vaultData = vault
+            self.vaultKey = derivedVaultKey
+            self.vaultFileMetadata = file
         }
-
-        let vault = try JSONDecoder().decode(VaultData.self, from: decryptedData)
-
-        // Only retain vaultKey — everything else is discarded
-        self.vaultData = vault
-        self.vaultKey = derivedVaultKey
-        self.vaultFileMetadata = file
     }
 
     public func lock() {
-        vaultData = nil
-        vaultKey = nil
-        vaultFileMetadata = nil
+        stateLock.withLock {
+            vaultData = nil
+            vaultKey = nil
+            vaultFileMetadata = nil
+        }
     }
 
     // MARK: - Entry Management
 
     public func addEntry(_ entry: PasswordEntry) throws {
-        guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
-        vaultData!.entries.append(entry)
-        try save()
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            vaultData!.entries.append(entry)
+            try save()
+        }
     }
 
     public func deleteEntry(id: UUID) throws {
-        guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
-        guard let index = vaultData!.entries.firstIndex(where: { $0.id == id }) else {
-            throw PasswordManagerError.entryNotFound(id)
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            guard let index = vaultData!.entries.firstIndex(where: { $0.id == id }) else {
+                throw PasswordManagerError.entryNotFound(id)
+            }
+            vaultData!.entries.remove(at: index)
+            try save()
         }
-        vaultData!.entries.remove(at: index)
-        try save()
     }
 
     public func updateEntry(_ entry: PasswordEntry) throws {
-        guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
-        guard let index = vaultData!.entries.firstIndex(where: { $0.id == entry.id }) else {
-            throw PasswordManagerError.entryNotFound(entry.id)
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            guard let idx = vaultData!.entries.firstIndex(where: { $0.id == entry.id }) else {
+                throw PasswordManagerError.entryNotFound(entry.id)
+            }
+            vaultData!.entries[idx] = entry
+            try save()
         }
-        vaultData!.entries[index] = entry
-        try save()
     }
 
     public func allEntries() throws -> [PasswordEntry] {
-        guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
-        return data.entries
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+            return data.entries
+        }
     }
 
     public func searchEntries(query: String) throws -> [PasswordEntry] {
-        guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
-        let lowered = query.lowercased()
-        return data.entries.filter {
-            $0.siteName.lowercased().contains(lowered)
-                || $0.username.lowercased().contains(lowered)
-                || ($0.url?.lowercased().contains(lowered) ?? false)
-                || ($0.notes?.lowercased().contains(lowered) ?? false)
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+            let lowered = query.lowercased()
+            return data.entries.filter {
+                $0.siteName.lowercased().contains(lowered)
+                    || $0.username.lowercased().contains(lowered)
+                    || ($0.url?.lowercased().contains(lowered) ?? false)
+                    || ($0.notes?.lowercased().contains(lowered) ?? false)
+            }
         }
     }
 
     public func getEntry(id: UUID) throws -> PasswordEntry {
-        guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
-        guard let entry = data.entries.first(where: { $0.id == id }) else {
-            throw PasswordManagerError.entryNotFound(id)
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+            guard let entry = data.entries.first(where: { $0.id == id }) else {
+                throw PasswordManagerError.entryNotFound(id)
+            }
+            return entry
         }
-        return entry
     }
 
     // MARK: - Persistence
 
-    public func save() throws {
+    private func save() throws {
         guard let data = vaultData, let key = vaultKey, let meta = vaultFileMetadata else {
             throw PasswordManagerError.vaultLocked
         }
@@ -310,14 +349,31 @@ public final class PasswordManager {
 
     // MARK: - File I/O
 
+    // Atomically creates the file with 0600 permissions. Returns false if it exists.
+    private func exclusiveCreate(at url: URL) -> Bool {
+        let fd = open(url.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
+    }
+
     private func writeVaultFile(_ file: VaultFile) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        let data = try encoder.encode(file)
-        try data.write(to: fileURL, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: fileURL.path
+        let encoded = try encoder.encode(file)
+
+        // Write to temp file with restricted permissions, then atomic rename
+        let tempURL = fileURL.appendingPathExtension("tmp")
+        FileManager.default.createFile(
+            atPath: tempURL.path,
+            contents: encoded,
+            attributes: [.posixPermissions: 0o600]
+        )
+        try FileManager.default.replaceItem(
+            at: fileURL,
+            withItemAt: tempURL,
+            backupItemName: nil,
+            resultingItemURL: nil
         )
     }
 

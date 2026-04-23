@@ -12,7 +12,7 @@ public struct KeychainManager: Sendable {
     let service: String
     let account: String
 
-    static let deviceKeyLength = 16
+    static let deviceKeyLength = 32
 
     public init(
         service: String = "com.pwmanager",

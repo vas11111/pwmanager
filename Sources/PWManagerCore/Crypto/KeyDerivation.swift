@@ -22,6 +22,10 @@ public struct KDFParams: Sendable {
         iterations: 1,
         parallelism: 1
     )
+
+    public static let minimumMemory = 256            // 256 KiB floor
+    public static let minimumIterations = 1
+    public static let minimumParallelism = 1
 }
 
 struct KeyDerivation: Sendable {
