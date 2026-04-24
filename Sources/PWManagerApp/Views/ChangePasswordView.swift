@@ -3,34 +3,22 @@ import PWManagerCore
 
 struct ChangePasswordView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var currentPassword = ""
-    @State private var newPassword = ""
-    @State private var confirmPassword = ""
+
+    enum Step { case currentPin, newPin, confirmPin }
+
+    @State private var step: Step = .currentPin
+    @State private var pin = ""
+    @State private var currentPin = ""
+    @State private var newPin = ""
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var success = false
-
-    private var isValid: Bool {
-        !currentPassword.isEmpty
-            && newPassword.count >= 8
-            && newPassword == confirmPassword
-    }
-
-    private var feedback: (String, Color)? {
-        if !newPassword.isEmpty && newPassword.count < 8 {
-            return ("At least 8 characters", .orange)
-        }
-        if !confirmPassword.isEmpty && newPassword != confirmPassword {
-            return ("Passwords don't match", .red)
-        }
-        if let e = errorMessage { return (e, .red) }
-        return nil
-    }
+    @State private var shakeError = false
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Change Master Password")
+                Text("Change PIN")
                     .font(.system(size: 16, weight: .bold))
                 Spacer()
             }
@@ -46,68 +34,50 @@ struct ChangePasswordView: View {
                 formContent
             }
         }
-        .frame(width: 420, height: 380)
+        .frame(width: 400, height: 480)
         .background(Theme.bg)
     }
 
     private var formContent: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Current Password")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.text2)
-                        ThemeTextField(placeholder: "Enter current password", text: $currentPassword, isSecure: true)
-                    }
+        VStack(spacing: 20) {
+            Spacer()
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("New Password")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.text2)
-                        ThemeTextField(placeholder: "Enter new password", text: $newPassword, isSecure: true)
-                        PasswordStrengthBar(password: newPassword)
-                    }
+            Text(stepTitle)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.text1)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Confirm New Password")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.text2)
-                        ThemeTextField(placeholder: "Confirm new password", text: $confirmPassword, isSecure: true)
-                    }
+            Text(stepSubtitle)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.text2)
 
-                    Text(feedback?.0 ?? " ")
+            PINPadView(pin: $pin, maxDigits: 6) { completed in
+                handlePin(completed)
+            }
+            .shake(shakeError)
+
+            Group {
+                if isProcessing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Changing PIN...")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.text2)
+                    }
+                } else if let err = errorMessage {
+                    Text(err)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(feedback?.1 ?? .clear)
-                        .frame(height: 14)
+                        .foregroundStyle(.red)
+                } else {
+                    Text(" ")
                 }
-                .padding(32)
             }
+            .frame(height: 16)
 
-            Divider().overlay(Theme.border)
+            Button("Cancel") { dismiss() }
+                .foregroundStyle(Theme.text3)
+                .padding(.bottom, 16)
 
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .foregroundStyle(Theme.text2)
-                Spacer()
-                Button {
-                    changePassword()
-                } label: {
-                    Group {
-                        if isProcessing {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text("Change Password")
-                        }
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 140)
-                }
-                .buttonStyle(AccentButtonStyle(disabled: !isValid || isProcessing))
-                .disabled(!isValid || isProcessing)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            Spacer()
         }
     }
 
@@ -117,10 +87,10 @@ struct ChangePasswordView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(.green)
-            Text("Password Changed")
+            Text("PIN Changed")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Theme.text1)
-            Text("Your vault has been re-encrypted with the new password.")
+            Text("Your vault has been re-encrypted with the new PIN.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text2)
                 .multilineTextAlignment(.center)
@@ -132,15 +102,55 @@ struct ChangePasswordView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func changePassword() {
+    private var stepTitle: String {
+        switch step {
+        case .currentPin: return "Current PIN"
+        case .newPin: return "New PIN"
+        case .confirmPin: return "Confirm New PIN"
+        }
+    }
+
+    private var stepSubtitle: String {
+        switch step {
+        case .currentPin: return "Enter your current PIN to verify."
+        case .newPin: return "Choose your new 6-digit PIN."
+        case .confirmPin: return "Enter the new PIN again."
+        }
+    }
+
+    private func handlePin(_ completed: String) {
+        switch step {
+        case .currentPin:
+            currentPin = completed
+            pin = ""
+            withAnimation(.spring(duration: 0.25)) { step = .newPin }
+
+        case .newPin:
+            newPin = completed
+            pin = ""
+            withAnimation(.spring(duration: 0.25)) { step = .confirmPin }
+
+        case .confirmPin:
+            if completed != newPin {
+                triggerShake("New PINs don't match. Try again.")
+                withAnimation(.spring(duration: 0.25)) {
+                    step = .newPin
+                    newPin = ""
+                }
+                return
+            }
+            changePin()
+        }
+    }
+
+    private func changePin() {
         isProcessing = true
         errorMessage = nil
 
         let manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
-        let current = currentPassword
-        let new = newPassword
+        let current = currentPin
+        let new = newPin
 
-        // Unlock first, then change
         Task.detached {
             do {
                 try manager.unlock(masterPassword: current)
@@ -157,9 +167,10 @@ struct ChangePasswordView: View {
                     isProcessing = false
                     switch error {
                     case .incorrectPassword:
-                        errorMessage = "Current password is incorrect."
-                    case .passwordTooShort(let min):
-                        errorMessage = "New password must be at least \(min) characters."
+                        triggerShake("Current PIN is incorrect.")
+                        step = .currentPin
+                        currentPin = ""
+                        newPin = ""
                     default:
                         errorMessage = "An error occurred."
                     }
@@ -170,6 +181,16 @@ struct ChangePasswordView: View {
                     errorMessage = "An unexpected error occurred."
                 }
             }
+        }
+    }
+
+    private func triggerShake(_ message: String) {
+        errorMessage = message
+        shakeError = true
+        pin = ""
+        Task {
+            try? await Task.sleep(for: .seconds(0.5))
+            shakeError = false
         }
     }
 }

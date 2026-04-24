@@ -25,8 +25,8 @@ struct SettingsView: View {
 
     private var securityTab: some View {
         Form {
-            Section("Master Password") {
-                Button("Change Master Password...") {
+            Section("PIN") {
+                Button("Change PIN...") {
                     showChangePassword = true
                 }
                 .sheet(isPresented: $showChangePassword) {

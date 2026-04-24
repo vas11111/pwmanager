@@ -2,9 +2,8 @@ import SwiftUI
 
 struct UnlockView: View {
     let viewModel: VaultViewModel
-    @State private var password = ""
+    @State private var pin = ""
     @State private var shakeError = false
-    @FocusState private var isFocused: Bool
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     private var canUseTouchID: Bool {
@@ -24,7 +23,7 @@ struct UnlockView: View {
                 .offset(y: -40)
 
             ThemeCard {
-                VStack(spacing: 26) {
+                VStack(spacing: 24) {
                     ZStack {
                         Circle()
                             .fill(Color.white.opacity(0.04))
@@ -39,67 +38,67 @@ struct UnlockView: View {
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.text1)
                             .tracking(-0.4)
-                        Text("Enter your master password to unlock.")
+                        Text("Enter your PIN to unlock.")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.text2)
                     }
 
-                    ThemeTextField(placeholder: "Master password", text: $password, isSecure: true)
-                        .focused($isFocused)
-                        .frame(width: 280)
-                        .onSubmit { unlock() }
-                        .onAppear { isFocused = true }
+                    PINPadView(pin: $pin, maxDigits: 6) { completed in
+                        viewModel.unlock(password: completed)
+                    }
+                    .shake(shakeError)
 
-                    Text(viewModel.errorMessage ?? " ")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.red)
-                        .frame(height: 14)
-                        .opacity(viewModel.errorMessage != nil ? 1 : 0)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            unlock()
-                        } label: {
-                            Group {
-                                if viewModel.isProcessing {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Text("Unlock")
-                                        .font(.system(size: 13, weight: .semibold))
-                                }
+                    // Error / status area
+                    Group {
+                        if viewModel.isProcessing {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Unlocking...")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Theme.text2)
                             }
-                            .frame(width: 210, height: 20)
+                        } else if let error = viewModel.errorMessage {
+                            Text(error)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(" ")
                         }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 10)
-                        .background(!password.isEmpty && !viewModel.isProcessing ? Theme.accent : Theme.accent.opacity(0.3))
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
-                        .disabled(password.isEmpty || viewModel.isProcessing)
+                    }
+                    .frame(height: 16)
 
-                        if canUseTouchID {
-                            Button {
-                                viewModel.unlockWithBiometrics()
-                            } label: {
+                    if canUseTouchID {
+                        Button {
+                            viewModel.unlockWithBiometrics()
+                        } label: {
+                            HStack(spacing: 6) {
                                 Image(systemName: "touchid")
-                                    .font(.system(size: 22, weight: .medium))
-                                    .foregroundStyle(Theme.accent)
-                                    .frame(width: 40, height: 40)
+                                    .font(.system(size: 18, weight: .medium))
+                                Text("Touch ID")
+                                    .font(.system(size: 13, weight: .semibold))
                             }
-                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
                             .background(Theme.bgField)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: Theme.r, style: .continuous)
                                     .stroke(Theme.border, lineWidth: 0.5)
                             )
-                            .disabled(viewModel.isProcessing)
                         }
+                        .buttonStyle(GhostButtonStyle())
+                        .disabled(viewModel.isProcessing)
+                    }
+
+                    if viewModel.remainingAttempts > 0 && viewModel.remainingAttempts < 10 {
+                        Text("\(viewModel.remainingAttempts) attempts remaining")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.text3)
                     }
                 }
             }
             .frame(width: 400)
-            .shake(shakeError)
         }
         .task {
             if canUseTouchID && !viewModel.isProcessing {
@@ -107,21 +106,17 @@ struct UnlockView: View {
             }
         }
         .onChange(of: viewModel.state) { _, newState in
-            if newState == .unlocked { password = "" }
+            if newState == .unlocked { pin = "" }
         }
         .onChange(of: viewModel.errorMessage) { _, msg in
             if msg != nil {
                 shakeError = true
+                pin = ""
                 Task {
                     try? await Task.sleep(for: .seconds(0.5))
                     shakeError = false
                 }
             }
         }
-    }
-
-    private func unlock() {
-        guard !password.isEmpty, !viewModel.isProcessing else { return }
-        viewModel.unlock(password: password)
     }
 }

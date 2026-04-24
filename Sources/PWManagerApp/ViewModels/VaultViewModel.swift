@@ -55,9 +55,15 @@ final class VaultViewModel {
         set { lockoutUntilTimestamp = newValue?.timeIntervalSince1970 ?? 0 }
     }
 
-    private static let maxFailedAttempts = 5
-    private static let lockoutDuration: TimeInterval = 30
+    private static let attemptsPerHour = 3
+    private static let maxTotalAttempts = 25
+    private static let lockoutDuration: TimeInterval = 3600
     private static let minimumClipboardClear = 10
+
+    @ObservationIgnored
+    @AppStorage("totalFailedAttempts") private var totalFailedAttempts = 0
+    @ObservationIgnored
+    @AppStorage("hourlyAttemptTimestamps") private var hourlyTimestampsData = Data()
 
     init() {
         self.manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
@@ -95,13 +101,63 @@ final class VaultViewModel {
     }
 
     var isLockedOut: Bool {
-        guard let until = lockoutUntil else { return false }
-        return Date() < until
+        recentAttemptCount >= Self.attemptsPerHour
     }
 
     var lockoutRemaining: Int {
-        guard let until = lockoutUntil else { return 0 }
-        return max(0, Int(until.timeIntervalSinceNow.rounded(.up)))
+        guard isLockedOut else { return 0 }
+        let timestamps = decodeTimestamps()
+        guard let oldest = timestamps.first else { return 0 }
+        let unlockTime = oldest.addingTimeInterval(Self.lockoutDuration)
+        return max(0, Int(unlockTime.timeIntervalSinceNow.rounded(.up)))
+    }
+
+    var remainingAttempts: Int {
+        max(0, Self.maxTotalAttempts - totalFailedAttempts)
+    }
+
+    private var recentAttemptCount: Int {
+        let cutoff = Date().addingTimeInterval(-Self.lockoutDuration)
+        return decodeTimestamps().filter { $0 > cutoff }.count
+    }
+
+    private func recordFailedAttempt() {
+        totalFailedAttempts += 1
+        var timestamps = decodeTimestamps()
+        timestamps.append(Date())
+        let cutoff = Date().addingTimeInterval(-Self.lockoutDuration)
+        timestamps = timestamps.filter { $0 > cutoff }
+        encodeTimestamps(timestamps)
+    }
+
+    private func clearAttempts() {
+        failedAttempts = 0
+        lockoutUntil = nil
+        var timestamps: [Date] = []
+        encodeTimestamps(timestamps)
+    }
+
+    private func decodeTimestamps() -> [Date] {
+        guard !hourlyTimestampsData.isEmpty else { return [] }
+        return (try? JSONDecoder().decode([Date].self, from: hourlyTimestampsData)) ?? []
+    }
+
+    private func encodeTimestamps(_ timestamps: [Date]) {
+        hourlyTimestampsData = (try? JSONEncoder().encode(timestamps)) ?? Data()
+    }
+
+    private func selfDestructVault() {
+        manager.lock()
+        try? FileManager.default.removeItem(at: PasswordManager.defaultFileURL())
+        entries = []
+        sshKeys = []
+        breachResults = [:]
+        selectedItemID = nil
+        totalFailedAttempts = 0
+        encodeTimestamps([])
+        errorMessage = nil
+        state = .needsSetup
+        toastMessage = "Vault destroyed after too many failed attempts"
     }
 
     // MARK: - Lifecycle
@@ -120,11 +176,11 @@ final class VaultViewModel {
     func createVault(password: String, confirm: String) {
         guard state == .needsSetup else { return }
         guard password == confirm else {
-            errorMessage = "Passwords do not match."
+            errorMessage = "PINs don't match."
             return
         }
-        guard password.count >= 8 else {
-            errorMessage = "Password must be at least 8 characters."
+        guard password.count >= 6 else {
+            errorMessage = "PIN must be 6 digits."
             return
         }
 
@@ -158,11 +214,20 @@ final class VaultViewModel {
     func unlock(password: String) {
         guard state == .locked else { return }
         guard !password.isEmpty else {
-            errorMessage = "Enter your master password."
+            errorMessage = "Enter your PIN."
             return
         }
+
+        // Self-destruct check
+        if totalFailedAttempts >= Self.maxTotalAttempts {
+            selfDestructVault()
+            return
+        }
+
+        // Hourly rate limit
         if isLockedOut {
-            errorMessage = "Too many attempts. Try again in \(lockoutRemaining)s."
+            let mins = lockoutRemaining / 60
+            errorMessage = "Too many attempts. Try again in \(mins > 0 ? "\(mins)m" : "\(lockoutRemaining)s")."
             return
         }
 
@@ -176,8 +241,8 @@ final class VaultViewModel {
                 await MainActor.run {
                     guard self.isProcessing, self.state == .locked else { return }
                     self.isProcessing = false
-                    self.failedAttempts = 0
-                    self.lockoutUntil = nil
+                    self.clearAttempts()
+                    self.totalFailedAttempts = 0
                     self.refreshEntries()
                     self.state = .unlocked
                     self.autoLockService.start()
@@ -189,13 +254,14 @@ final class VaultViewModel {
                 if Task.isCancelled { return }
                 await MainActor.run {
                     self.isProcessing = false
-                    self.failedAttempts += 1
-                    if self.failedAttempts >= Self.maxFailedAttempts {
-                        self.lockoutUntil = Date().addingTimeInterval(Self.lockoutDuration)
-                        self.failedAttempts = 0
-                        self.errorMessage = "Too many failed attempts. Locked for \(Int(Self.lockoutDuration))s."
+                    self.recordFailedAttempt()
+
+                    if self.totalFailedAttempts >= Self.maxTotalAttempts {
+                        self.selfDestructVault()
+                    } else if self.isLockedOut {
+                        self.errorMessage = "3 wrong attempts. Locked for 1 hour."
                     } else {
-                        self.errorMessage = Self.friendlyError(error)
+                        self.errorMessage = "Wrong PIN. \(self.remainingAttempts) attempts left."
                     }
                 }
             }

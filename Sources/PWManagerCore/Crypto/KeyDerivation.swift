@@ -34,7 +34,7 @@ public struct KDFParams: Sendable {
 struct KeyDerivation: Sendable {
     static let saltLength = 32
     static let keyLength = 32
-    static let minimumPasswordLength = 8
+    static let minimumPasswordLength = 6
 
     static func generateSalt() -> Data {
         var bytes = [UInt8](repeating: 0, count: saltLength)

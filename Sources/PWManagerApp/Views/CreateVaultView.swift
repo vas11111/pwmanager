@@ -2,25 +2,19 @@ import SwiftUI
 
 struct CreateVaultView: View {
     let viewModel: VaultViewModel
-    @State private var password = ""
-    @State private var confirm = ""
-    @FocusState private var focusedField: Field?
-    private enum Field { case password, confirm }
 
-    private var isValid: Bool { password.count >= 8 && password == confirm }
+    enum Step { case setPin, confirmPin }
 
-    private var feedback: (String, Color)? {
-        if !password.isEmpty && password.count < 8 { return ("At least 8 characters", .orange) }
-        if !confirm.isEmpty && password != confirm { return ("Passwords don't match", .red) }
-        if let e = viewModel.errorMessage { return (e, .red) }
-        return nil
-    }
+    @State private var step: Step = .setPin
+    @State private var pin = ""
+    @State private var firstPin = ""
+    @State private var shakeError = false
+    @State private var errorText: String?
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            // Subtle gradient glow behind the card
             Circle()
                 .fill(Theme.accent.opacity(0.06))
                 .frame(width: 400, height: 400)
@@ -28,8 +22,7 @@ struct CreateVaultView: View {
                 .offset(y: -40)
 
             ThemeCard {
-                VStack(spacing: 26) {
-                    // Icon
+                VStack(spacing: 24) {
                     ZStack {
                         Circle()
                             .fill(Theme.accentGlow)
@@ -40,54 +33,72 @@ struct CreateVaultView: View {
                     }
 
                     VStack(spacing: 6) {
-                        Text("Create Your Vault")
+                        Text(step == .setPin ? "Set Your PIN" : "Confirm Your PIN")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.text1)
                             .tracking(-0.4)
-                        Text("Choose a master password to protect\nyour credentials with quantum-safe encryption.")
+                        Text(step == .setPin
+                             ? "Choose a 6-digit PIN to protect your vault."
+                             : "Enter the same PIN again to confirm.")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.text2)
                             .multilineTextAlignment(.center)
-                            .lineSpacing(2)
                     }
 
-                    VStack(spacing: 8) {
-                        ThemeTextField(placeholder: "Master password", text: $password, isSecure: true)
-                            .focused($focusedField, equals: .password)
-                            .onSubmit { focusedField = .confirm }
-                        PasswordStrengthBar(password: password)
-                        ThemeTextField(placeholder: "Confirm password", text: $confirm, isSecure: true)
-                            .focused($focusedField, equals: .confirm)
-                            .onSubmit {
-                                if isValid { viewModel.createVault(password: password, confirm: confirm) }
-                            }
+                    PINPadView(pin: $pin, maxDigits: 6) { completed in
+                        handlePinEntry(completed)
                     }
-                    .frame(width: 280)
-                    .onAppear { focusedField = .password }
+                    .shake(shakeError)
 
-                    Text(feedback?.0 ?? " ")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(feedback?.1 ?? .clear)
-                        .frame(height: 14)
-
-                    Button {
-                        viewModel.createVault(password: password, confirm: confirm)
-                    } label: {
-                        Group {
-                            if viewModel.isProcessing {
+                    // Error / status area
+                    Group {
+                        if viewModel.isProcessing {
+                            HStack(spacing: 6) {
                                 ProgressView().controlSize(.small)
-                            } else {
-                                Text("Create Vault")
-                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Creating vault...")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Theme.text2)
                             }
+                        } else if let err = errorText ?? viewModel.errorMessage {
+                            Text(err)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(" ")
                         }
-                        .frame(width: 260, height: 20)
                     }
-                    .buttonStyle(AccentButtonStyle(disabled: !isValid || viewModel.isProcessing))
-                    .disabled(!isValid || viewModel.isProcessing)
+                    .frame(height: 16)
                 }
             }
             .frame(width: 400)
+        }
+    }
+
+    private func handlePinEntry(_ completed: String) {
+        switch step {
+        case .setPin:
+            firstPin = completed
+            pin = ""
+            withAnimation(.spring(duration: 0.25)) {
+                step = .confirmPin
+            }
+
+        case .confirmPin:
+            if completed == firstPin {
+                viewModel.createVault(password: completed, confirm: completed)
+            } else {
+                shakeError = true
+                errorText = "PINs don't match. Try again."
+                pin = ""
+                Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    shakeError = false
+                }
+                withAnimation(.spring(duration: 0.25)) {
+                    step = .setPin
+                    firstPin = ""
+                }
+            }
         }
     }
 }
