@@ -14,6 +14,7 @@ struct ChangePasswordView: View {
     @State private var errorMessage: String?
     @State private var success = false
     @State private var shakeError = false
+    @State private var newRecoveryKey: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,12 +91,32 @@ struct ChangePasswordView: View {
             Text("PIN Changed")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Theme.text1)
-            Text("Your vault has been re-encrypted with the new PIN.")
+            Text("Your vault has been re-encrypted.\nA new recovery key has been generated.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text2)
                 .multilineTextAlignment(.center)
+
+            if let key = newRecoveryKey {
+                VStack(spacing: 6) {
+                    Text("New Recovery Key")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.orange)
+                    Text(key)
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.text1)
+                        .textSelection(.enabled)
+                        .padding(12)
+                        .background(Theme.bgField)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                    Text("Save this key. Your old recovery key no longer works.")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.orange)
+                }
+                .padding(.vertical, 8)
+            }
+
             Spacer()
-            Button("Done") { dismiss() }
+            Button("I've Saved It") { dismiss() }
                 .buttonStyle(AccentButtonStyle())
                 .padding(.bottom, 24)
         }
@@ -150,16 +171,19 @@ struct ChangePasswordView: View {
         let manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
         let current = currentPin
         let new = newPin
+        let rk = RecoveryKey()
 
         Task.detached {
             do {
                 try manager.unlock(masterPassword: current)
                 try manager.changeMasterPassword(
                     currentPassword: current,
-                    newPassword: new
+                    newPassword: new,
+                    newRecoveryKey: rk
                 )
                 await MainActor.run {
                     isProcessing = false
+                    newRecoveryKey = rk.formatted
                     withAnimation(.spring(duration: 0.3)) { success = true }
                 }
             } catch let error as PasswordManagerError {
