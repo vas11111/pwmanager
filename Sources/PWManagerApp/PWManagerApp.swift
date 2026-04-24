@@ -71,6 +71,8 @@ struct RootView: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    @AppStorage("screenCaptureProtection") private var screenCaptureProtection = true
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -81,7 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "PWManager"
             window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
             window.setFrameAutosaveName("PWManagerMain")
+            applyScreenCaptureProtection(to: window)
         }
+    }
+
+    @MainActor func applyScreenCaptureProtection(to window: NSWindow? = nil) {
+        let target = window ?? NSApp.windows.first
+        target?.sharingType = screenCaptureProtection ? .none : .readOnly
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

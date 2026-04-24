@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("autoLockMinutes") private var autoLockMinutes = 5
     @AppStorage("clipboardClearSeconds") private var clipboardClearSeconds = 30
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
+    @AppStorage("screenCaptureProtection") private var screenCaptureProtection = true
 
     @State private var biometricService = BiometricService()
     @State private var showChangePassword = false
@@ -13,10 +14,12 @@ struct SettingsView: View {
         TabView {
             securityTab
                 .tabItem { Label("Security", systemImage: "lock.shield") }
+            privacyTab
+                .tabItem { Label("Privacy", systemImage: "eye.slash") }
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 440, height: 320)
+        .frame(width: 440, height: 360)
         .task { biometricService.checkAvailability() }
     }
 
@@ -69,6 +72,24 @@ struct SettingsView: View {
                     Text("Touch ID is not available on this device.")
                         .foregroundStyle(.secondary)
                 }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    private var privacyTab: some View {
+        Form {
+            Section("Screen Capture") {
+                Toggle("Block screen recording & screenshots", isOn: $screenCaptureProtection)
+                    .onChange(of: screenCaptureProtection) { _, _ in
+                        if let delegate = NSApp.delegate as? AppDelegate {
+                            delegate.applyScreenCaptureProtection()
+                        }
+                    }
+                Text("When enabled, the window appears as a black rectangle in screen recordings, screenshots, and screen sharing sessions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

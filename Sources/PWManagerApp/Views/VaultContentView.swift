@@ -120,6 +120,8 @@ struct VaultContentView: View {
 
     // MARK: - Sidebar
 
+    @AppStorage("screenCaptureProtection") private var screenCaptureProtection = true
+
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack {
@@ -127,6 +129,12 @@ struct VaultContentView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Theme.text1)
                     .tracking(-0.3)
+                if screenCaptureProtection {
+                    Image(systemName: "rectangle.inset.filled.and.person.filled")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.accent.opacity(0.6))
+                        .help("Screen capture protection is active")
+                }
                 Spacer()
                 HStack(spacing: 4) {
                     sidebarButton(icon: "plus") { openAddForm() }
