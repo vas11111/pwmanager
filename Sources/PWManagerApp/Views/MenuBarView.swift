@@ -16,10 +16,14 @@ struct MenuBarView: View {
             Divider().opacity(0.3)
 
             Button {
-                for window in NSApp.windows where window.canBecomeMain {
-                    window.makeKeyAndOrderFront(nil)
-                }
                 NSApp.activate(ignoringOtherApps: true)
+                DispatchQueue.main.async {
+                    for window in NSApp.windows where window.canBecomeMain {
+                        window.deminiaturize(nil)
+                        window.makeKeyAndOrderFront(nil)
+                        break
+                    }
+                }
             } label: {
                 HStack {
                     Text("Show Window")

@@ -42,8 +42,11 @@ struct PWManagerApp: App {
                 .preferredColorScheme(.dark)
         }
 
-        MenuBarExtra("PWManager", systemImage: "lock.shield") {
+        MenuBarExtra {
             MenuBarView(viewModel: viewModel)
+        } label: {
+            Image(systemName: "lock.shield")
+                .symbolRenderingMode(.monochrome)
         }
         .menuBarExtraStyle(.window)
     }
@@ -56,22 +59,30 @@ private struct RecoveryKeyWrapper: Identifiable {
 
 struct RootView: View {
     let viewModel: VaultViewModel
+    @State private var showOverlay = false
 
     private var isExpanded: Bool {
         viewModel.state == .unlocked
     }
 
     var body: some View {
-        Group {
-            switch viewModel.state {
-            case .loading:
-                Theme.bg.ignoresSafeArea()
-            case .needsSetup:
-                CreateVaultView(viewModel: viewModel)
-            case .locked:
-                UnlockView(viewModel: viewModel)
-            case .unlocked:
-                VaultContentView(viewModel: viewModel)
+        ZStack {
+            Group {
+                switch viewModel.state {
+                case .loading:
+                    Theme.bg.ignoresSafeArea()
+                case .needsSetup:
+                    CreateVaultView(viewModel: viewModel)
+                case .locked:
+                    UnlockView(viewModel: viewModel)
+                case .unlocked:
+                    VaultContentView(viewModel: viewModel)
+                }
+            }
+
+            if showOverlay {
+                Theme.bg
+                    .transition(.opacity)
             }
         }
         .frame(
@@ -82,6 +93,17 @@ struct RootView: View {
         )
         .background(Theme.bg)
         .preferredColorScheme(.dark)
+        .onChange(of: viewModel.state) { oldState, newState in
+            let resizing = (oldState != .unlocked && newState == .unlocked)
+                || (oldState == .unlocked && newState != .unlocked)
+            guard resizing else { return }
+
+            withAnimation(.easeOut(duration: 0.08)) { showOverlay = true }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeIn(duration: 0.25)) { showOverlay = false }
+            }
+        }
         .sheet(item: Binding(
             get: { viewModel.pendingRecoveryKey.map { RecoveryKeyWrapper(key: $0) } },
             set: { if $0 == nil { viewModel.pendingRecoveryKey = nil } }
@@ -112,10 +134,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.setFrameAutosaveName("PWManagerMain")
             applyScreenCaptureProtection(to: window)
 
-            // Start small for PIN entry
             let size = Self.lockedSize
             window.setContentSize(size)
             window.center()
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, self.screenCaptureProtection,
+                  let window = note.object as? NSWindow else { return }
+            DispatchQueue.main.async {
+                window.sharingType = .none
+            }
         }
     }
 
@@ -143,8 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor func applyScreenCaptureProtection(to window: NSWindow? = nil) {
-        let target = window ?? NSApp.windows.first
-        target?.sharingType = screenCaptureProtection ? .none : .readOnly
+        let type: NSWindow.SharingType = screenCaptureProtection ? .none : .readOnly
+        if let window {
+            window.sharingType = type
+        } else {
+            for w in NSApp.windows { w.sharingType = type }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -10,43 +10,41 @@ struct RecoveryUnlockView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Recovery Key")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.text1)
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Theme.text3)
-                        .frame(width: 26, height: 26)
+                        .frame(width: 22, height: 22)
                         .background(Theme.bgField)
                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
                 .buttonStyle(GhostButtonStyle())
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
             Divider().overlay(Theme.border)
 
-            VStack(spacing: 20) {
-                Spacer()
-
+            VStack(spacing: 16) {
                 Image(systemName: "key.horizontal.fill")
-                    .font(.system(size: 36, weight: .medium))
+                    .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(.orange)
+                    .padding(.top, 20)
 
-                Text("Enter the recovery key you saved when creating your vault.")
-                    .font(.system(size: 12, weight: .medium))
+                Text("Enter the recovery key you saved\nwhen creating your vault.")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.text2)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
 
                 ThemeTextField(
                     placeholder: "XXXX-XXXX-XXXX-XXXX-XXXX",
                     text: $recoveryInput
                 )
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
                 .shake(shakeError)
 
                 Group {
@@ -65,22 +63,21 @@ struct RecoveryUnlockView: View {
                         Text(" ")
                     }
                 }
-                .frame(height: 16)
+                .frame(height: 14)
 
                 Button {
                     viewModel.unlockWithRecovery(key: recoveryInput)
                 } label: {
                     Text("Unlock with Recovery Key")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 220)
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 200)
                 }
                 .buttonStyle(AccentButtonStyle(disabled: recoveryInput.isEmpty || viewModel.isProcessing))
                 .disabled(recoveryInput.isEmpty || viewModel.isProcessing)
-
-                Spacer()
+                .padding(.bottom, 16)
             }
         }
-        .frame(width: 420, height: 400)
+        .frame(width: 360, height: 300)
         .background(Theme.bg)
         .onChange(of: viewModel.state) { _, newState in
             if newState == .unlocked { dismiss() }
