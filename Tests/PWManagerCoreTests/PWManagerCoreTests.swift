@@ -173,46 +173,23 @@ struct MLKEMTests {
         #expect(result.sharedSecret.count == 32)
     }
 
-    @Test func hybridKeyDerivationIsDeterministic() {
-        let masterKey = SymmetricKey(size: .bits256)
+    @Test func vaultKeyDerivationIsDeterministic() {
         let quantumSecret: [UInt8] = Array(repeating: 0xFF, count: 32)
 
-        let key1 = CryptoEngine.deriveVaultKey(
-            masterKey: masterKey, quantumSecret: quantumSecret
-        )
-        let key2 = CryptoEngine.deriveVaultKey(
-            masterKey: masterKey, quantumSecret: quantumSecret
-        )
+        let key1 = CryptoEngine.deriveVaultKey(quantumSecret: quantumSecret)
+        let key2 = CryptoEngine.deriveVaultKey(quantumSecret: quantumSecret)
 
         let bytes1 = key1.withUnsafeBytes { Data($0) }
         let bytes2 = key2.withUnsafeBytes { Data($0) }
         #expect(bytes1 == bytes2)
     }
 
-    @Test func hybridKeyChangesWithDifferentMasterKey() {
-        let masterKey1 = SymmetricKey(size: .bits256)
-        let masterKey2 = SymmetricKey(size: .bits256)
-        let quantumSecret: [UInt8] = Array(repeating: 0xFF, count: 32)
-
-        let key1 = CryptoEngine.deriveVaultKey(
-            masterKey: masterKey1, quantumSecret: quantumSecret
-        )
-        let key2 = CryptoEngine.deriveVaultKey(
-            masterKey: masterKey2, quantumSecret: quantumSecret
-        )
-
-        let bytes1 = key1.withUnsafeBytes { Data($0) }
-        let bytes2 = key2.withUnsafeBytes { Data($0) }
-        #expect(bytes1 != bytes2)
-    }
-
-    @Test func hybridKeyChangesWithDifferentQuantumSecret() {
-        let masterKey = SymmetricKey(size: .bits256)
+    @Test func vaultKeyChangesWithDifferentQuantumSecret() {
         let secret1: [UInt8] = Array(repeating: 0xAA, count: 32)
         let secret2: [UInt8] = Array(repeating: 0xBB, count: 32)
 
-        let key1 = CryptoEngine.deriveVaultKey(masterKey: masterKey, quantumSecret: secret1)
-        let key2 = CryptoEngine.deriveVaultKey(masterKey: masterKey, quantumSecret: secret2)
+        let key1 = CryptoEngine.deriveVaultKey(quantumSecret: secret1)
+        let key2 = CryptoEngine.deriveVaultKey(quantumSecret: secret2)
 
         let bytes1 = key1.withUnsafeBytes { Data($0) }
         let bytes2 = key2.withUnsafeBytes { Data($0) }

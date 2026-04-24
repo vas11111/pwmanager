@@ -80,7 +80,6 @@ public final class PasswordManager {
                     publicKey: keyPair.encapsulationKey
                 )
                 let derivedVaultKey = CryptoEngine.deriveVaultKey(
-                    masterKey: combinedKey,
                     quantumSecret: encapResult.sharedSecret
                 )
 
@@ -233,7 +232,6 @@ public final class PasswordManager {
 
             // 6. Derive vault key
             let derivedVaultKey = CryptoEngine.deriveVaultKey(
-                masterKey: combinedKey,
                 quantumSecret: sharedSecret
             )
 
@@ -278,6 +276,16 @@ public final class PasswordManager {
                 throw PasswordManagerError.incorrectPassword
             }
 
+            // Validate recovery KDF params
+            guard rMem >= KDFParams.minimumMemory,
+                  rMem <= KDFParams.maximumMemory,
+                  rIter >= KDFParams.minimumIterations,
+                  rIter <= KDFParams.maximumIterations,
+                  rPar >= KDFParams.minimumParallelism,
+                  rPar <= KDFParams.maximumParallelism else {
+                throw PasswordManagerError.weakKDFParams
+            }
+
             let deviceKey: Data
             do { deviceKey = try keychain.retrieveDeviceKey() }
             catch { throw PasswordManagerError.deviceKeyMissing }
@@ -317,7 +325,7 @@ public final class PasswordManager {
             }
 
             let derivedVaultKey = CryptoEngine.deriveVaultKey(
-                masterKey: rCombined, quantumSecret: sharedSecret
+                quantumSecret: sharedSecret
             )
 
             let metadataBytes = try file.metadata.canonicalBytes()
@@ -349,6 +357,7 @@ public final class PasswordManager {
     public func changeMasterPassword(
         currentPassword: String,
         newPassword: String,
+        newRecoveryKey: RecoveryKey? = nil,
         kdfParams: KDFParams = .default
     ) throws {
         try stateLock.withLock {
@@ -396,7 +405,6 @@ public final class PasswordManager {
             let encapResult = CryptoEngine.encapsulate(publicKey: keyPair.encapsulationKey)
 
             let newVaultKey = CryptoEngine.deriveVaultKey(
-                masterKey: newCombined,
                 quantumSecret: encapResult.sharedSecret
             )
 
@@ -421,6 +429,31 @@ public final class PasswordManager {
                 metadata: try metadata.canonicalBytes()
             )
 
+            // Recovery key slot
+            var recoverySalt: Data? = nil
+            var recoveryKdfMemory: Int? = nil
+            var recoveryKdfIterations: Int? = nil
+            var recoveryKdfParallelism: Int? = nil
+            var encryptedMLKEMPrivateKeyRecovery: Data? = nil
+
+            if let rk = newRecoveryKey {
+                let rSalt = KeyDerivation.generateSalt()
+                let rParams = KDFParams.recovery
+                let rMasterKey = try KeyDerivation.deriveKey(
+                    from: rk.raw, salt: rSalt, params: rParams
+                )
+                let rCombined = CryptoEngine.combineMasterWithDeviceKey(
+                    masterKey: rMasterKey, deviceKey: deviceKey
+                )
+                encryptedMLKEMPrivateKeyRecovery = try CryptoEngine.encrypt(
+                    Data(keyPair.decapsulationKey.keyBytes), using: rCombined
+                )
+                recoverySalt = rSalt
+                recoveryKdfMemory = rParams.memory
+                recoveryKdfIterations = rParams.iterations
+                recoveryKdfParallelism = rParams.parallelism
+            }
+
             let newFile = VaultFile(
                 version: VaultFile.currentVersion,
                 salt: newSalt,
@@ -432,11 +465,11 @@ public final class PasswordManager {
                 encapsulatedKey: Data(encapResult.ciphertext),
                 encryptedEntries: encryptedEntries,
                 metadataHMAC: hmac,
-                recoverySalt: nil,
-                recoveryKdfMemory: nil,
-                recoveryKdfIterations: nil,
-                recoveryKdfParallelism: nil,
-                encryptedMLKEMPrivateKeyRecovery: nil
+                recoverySalt: recoverySalt,
+                recoveryKdfMemory: recoveryKdfMemory,
+                recoveryKdfIterations: recoveryKdfIterations,
+                recoveryKdfParallelism: recoveryKdfParallelism,
+                encryptedMLKEMPrivateKeyRecovery: encryptedMLKEMPrivateKeyRecovery
             )
 
             try writeVaultFile(newFile)

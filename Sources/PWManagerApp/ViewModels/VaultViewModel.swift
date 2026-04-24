@@ -346,6 +346,7 @@ final class VaultViewModel {
         entries = []
         sshKeys = []
         breachResults = [:]
+        pendingRecoveryKey = nil
         Task { await breachChecker.clearCache() }
         selectedItemID = nil
         searchText = ""

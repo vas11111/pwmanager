@@ -81,13 +81,11 @@ struct CryptoEngine: Sendable {
     // MARK: - Hybrid Key Derivation
 
     static func deriveVaultKey(
-        masterKey: SymmetricKey,
         quantumSecret: [UInt8]
     ) -> SymmetricKey {
         HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: masterKey,
-            salt: Data(quantumSecret),
-            info: Data("pwmanager-vault-key-v2".utf8),
+            inputKeyMaterial: SymmetricKey(data: quantumSecret),
+            info: Data("pwmanager-vault-key-v3".utf8),
             outputByteCount: 32
         )
     }

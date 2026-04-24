@@ -47,9 +47,16 @@ struct RecoveryKeyView: View {
                             )
 
                         Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(recoveryKey, forType: .string)
+                            let pb = NSPasteboard.general
+                            pb.clearContents()
+                            pb.setString(recoveryKey, forType: .string)
+                            pb.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+                            let changeCount = pb.changeCount
                             copied = true
+                            Task {
+                                try? await Task.sleep(for: .seconds(30))
+                                if pb.changeCount == changeCount { pb.clearContents() }
+                            }
                             Task {
                                 try? await Task.sleep(for: .seconds(2))
                                 copied = false
