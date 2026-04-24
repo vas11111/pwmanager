@@ -24,6 +24,10 @@ struct EntryDetailView: View {
                     totpRow(secret)
                 }
 
+                if let code = entry.recoveryCode, !code.isEmpty {
+                    recoveryCodeRow(code)
+                }
+
                 BreachStatusRow(entry: entry, viewModel: viewModel)
 
                 if !entry.history.isEmpty {
@@ -145,6 +149,50 @@ struct EntryDetailView: View {
                     .foregroundStyle(Theme.text2)
                     .frame(width: 80, alignment: .leading)
                 TOTPView(secret: secret, viewModel: viewModel)
+            }
+            .padding(.vertical, 12)
+            Divider().overlay(Theme.border)
+        }
+    }
+
+    @State private var showRecoveryCode = false
+
+    private func recoveryCodeRow(_ code: String) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                Text("Recovery")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .frame(width: 80, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        withAnimation(.spring(duration: 0.2)) { showRecoveryCode.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: showRecoveryCode ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(showRecoveryCode ? "Hide recovery codes" : "Show recovery codes")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+
+                    if showRecoveryCode {
+                        Text(code)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.text1)
+                            .textSelection(.enabled)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.bgCard)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                    }
+                }
+
+                Spacer()
+                copyButton(code)
             }
             .padding(.vertical, 12)
             Divider().overlay(Theme.border)

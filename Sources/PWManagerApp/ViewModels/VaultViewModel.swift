@@ -288,7 +288,8 @@ final class VaultViewModel {
         password: String,
         url: String?,
         notes: String?,
-        totpSecret: String? = nil
+        totpSecret: String? = nil,
+        recoveryCode: String? = nil
     ) {
         guard state == .unlocked else { return }
         let cleanURL = sanitizeURL(url)
@@ -298,7 +299,8 @@ final class VaultViewModel {
             password: password,
             url: cleanURL,
             notes: notes?.isEmpty == true ? nil : notes,
-            totpSecret: totpSecret
+            totpSecret: totpSecret,
+            recoveryCode: recoveryCode
         )
         do {
             try manager.addEntry(entry)
@@ -313,8 +315,11 @@ final class VaultViewModel {
         guard state == .unlocked else { return }
         var updated = entry
         updated.url = sanitizeURL(updated.url)
-        if let old = oldPassword, old != updated.password {
-            updated.updatePassword(updated.password)
+        if let old = oldPassword, old != entry.password {
+            // Restore the old password first, then call updatePassword with the new one
+            // so history correctly archives the old value
+            updated.password = old
+            updated.updatePassword(entry.password)
         } else {
             updated.modifiedAt = Date()
         }

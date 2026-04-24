@@ -12,6 +12,8 @@ struct InlineFormView: View {
     @State private var url: String
     @State private var notes: String
     @State private var totpSecret: String
+    @State private var recoveryCode: String
+    @State private var showRecoveryCode = false
     @State private var showPassword = false
     @State private var showGenerator = false
     @State private var genLength: Double = 24
@@ -30,6 +32,7 @@ struct InlineFormView: View {
         _url = State(initialValue: existing?.url ?? "")
         _notes = State(initialValue: existing?.notes ?? "")
         _totpSecret = State(initialValue: existing?.totpSecret ?? "")
+        _recoveryCode = State(initialValue: existing?.recoveryCode ?? "")
     }
 
     private var isValid: Bool {
@@ -146,6 +149,43 @@ struct InlineFormView: View {
                     }
                 }
 
+                formRow(label: "Recovery") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.spring(duration: 0.2)) {
+                                    showRecoveryCode.toggle()
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: showRecoveryCode ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 9, weight: .semibold))
+                                    Text(recoveryCode.isEmpty ? "Add recovery codes" : "Recovery codes")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundStyle(Theme.text2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if showRecoveryCode {
+                            TextEditor(text: $recoveryCode)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Theme.text1)
+                                .scrollContentBackground(.hidden)
+                                .padding(8)
+                                .frame(height: 72)
+                                .background(Theme.bgField)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                                        .stroke(Theme.border, lineWidth: 0.5)
+                                )
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                }
+
                 formRow(label: "Notes") {
                     TextEditor(text: $notes)
                         .font(.system(size: 13, weight: .medium))
@@ -249,6 +289,7 @@ struct InlineFormView: View {
             guard !totpSecret.isEmpty else { return nil }
             return TOTPGenerator.isValidSecret(totpSecret) ? totpSecret : nil
         }()
+        let cleanRecovery = recoveryCode.isEmpty ? nil : recoveryCode
         if var entry = existing {
             let oldPw = entry.password
             entry.siteName = siteName
@@ -257,9 +298,10 @@ struct InlineFormView: View {
             entry.url = url.isEmpty ? nil : url
             entry.notes = notes.isEmpty ? nil : notes
             entry.totpSecret = cleanTOTP
+            entry.recoveryCode = cleanRecovery
             viewModel.updateEntry(entry, oldPassword: oldPw)
         } else {
-            viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes, totpSecret: cleanTOTP)
+            viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes, totpSecret: cleanTOTP, recoveryCode: cleanRecovery)
         }
         onClose()
     }

@@ -346,7 +346,12 @@ struct VaultContentView: View {
                 EntryDetailView(entry: entry, viewModel: viewModel, onEdit: { startEditLogin($0) })
                     .id(entry.id)
             } else if viewModel.selectedSection == .sshKeys, let key = viewModel.selectedSSHKey {
-                SSHKeyDetailView(sshKey: key, viewModel: viewModel)
+                SSHKeyDetailView(sshKey: key, viewModel: viewModel, onEdit: { k in
+                    withAnimation(.spring(duration: 0.25)) {
+                        closeFormState()
+                        editingSSHKey = k
+                    }
+                })
                     .id(key.id)
             } else {
                 emptyState

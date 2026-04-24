@@ -5,6 +5,7 @@ import PWManagerCore
 struct SSHKeyDetailView: View {
     let sshKey: SSHKeyEntry
     let viewModel: VaultViewModel
+    var onEdit: ((SSHKeyEntry) -> Void)?
     @State private var showingDeleteConfirm = false
 
     private var key: SSHKey? {
@@ -55,8 +56,15 @@ struct SSHKeyDetailView: View {
                     .foregroundStyle(Theme.text2)
             }
             Spacer()
-            headerButton(icon: "trash", help: "Delete SSH key") {
-                showingDeleteConfirm = true
+            HStack(spacing: 6) {
+                if let onEdit {
+                    headerButton(icon: "pencil", help: "Edit SSH key") {
+                        onEdit(sshKey)
+                    }
+                }
+                headerButton(icon: "trash", help: "Delete SSH key") {
+                    showingDeleteConfirm = true
+                }
             }
         }
     }
