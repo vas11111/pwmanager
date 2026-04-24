@@ -12,7 +12,13 @@ public struct KDFParams: Sendable {
     public let parallelism: Int
 
     public static let `default` = KDFParams(
-        memory: 65_536,     // 64 MiB
+        memory: 262_144,    // 256 MiB — hardened for 6-digit PINs
+        iterations: 8,
+        parallelism: 4
+    )
+
+    public static let recovery = KDFParams(
+        memory: 65_536,     // 64 MiB — recovery key is high-entropy, doesn't need as much
         iterations: 3,
         parallelism: 4
     )

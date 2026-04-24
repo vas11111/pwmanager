@@ -47,6 +47,11 @@ struct PWManagerApp: App {
     }
 }
 
+private struct RecoveryKeyWrapper: Identifiable {
+    let id = UUID()
+    let key: String
+}
+
 struct RootView: View {
     let viewModel: VaultViewModel
 
@@ -67,6 +72,15 @@ struct RootView: View {
         .background(Theme.bg)
         .preferredColorScheme(.dark)
         .animation(.spring(duration: 0.35, bounce: 0.15), value: viewModel.state == .unlocked)
+        .sheet(item: Binding(
+            get: { viewModel.pendingRecoveryKey.map { RecoveryKeyWrapper(key: $0) } },
+            set: { if $0 == nil { viewModel.pendingRecoveryKey = nil } }
+        )) { wrapper in
+            RecoveryKeyView(recoveryKey: wrapper.key) {
+                viewModel.pendingRecoveryKey = nil
+            }
+            .preferredColorScheme(.dark)
+        }
     }
 }
 

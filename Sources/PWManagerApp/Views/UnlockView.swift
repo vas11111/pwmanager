@@ -4,6 +4,8 @@ struct UnlockView: View {
     let viewModel: VaultViewModel
     @State private var pin = ""
     @State private var shakeError = false
+    @State private var showRecovery = false
+    @State private var recoveryInput = ""
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     private var canUseTouchID: Bool {
@@ -96,7 +98,18 @@ struct UnlockView: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Theme.text3)
                     }
+
+                    Button("Forgot PIN? Use Recovery Key") {
+                        showRecovery = true
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.text3)
+                    .buttonStyle(.plain)
                 }
+            }
+            .sheet(isPresented: $showRecovery) {
+                RecoveryUnlockView(viewModel: viewModel)
+                    .preferredColorScheme(.dark)
             }
             .frame(width: 400)
         }

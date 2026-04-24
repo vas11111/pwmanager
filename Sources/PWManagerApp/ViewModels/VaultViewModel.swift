@@ -31,6 +31,7 @@ final class VaultViewModel {
     var showingAddEntry = false
     var showingAddSSHKey = false
     var toastMessage: String?
+    var pendingRecoveryKey: String?
 
     let biometricService = BiometricService()
     let autoLockService = AutoLockService()
@@ -188,12 +189,18 @@ final class VaultViewModel {
         isProcessing = true
         let box = Unsendable(value: manager)
 
+        let recoveryKey = RecoveryKey()
+
         inflightTask = Task.detached {
             do {
-                try box.value.createVault(masterPassword: password)
+                try box.value.createVault(
+                    masterPassword: password,
+                    recoveryKey: recoveryKey
+                )
                 await MainActor.run {
                     guard self.isProcessing, self.state == .needsSetup else { return }
                     self.isProcessing = false
+                    self.pendingRecoveryKey = recoveryKey.formatted
                     self.refreshEntries()
                     self.state = .unlocked
                     self.autoLockService.start()
@@ -263,6 +270,42 @@ final class VaultViewModel {
                     } else {
                         self.errorMessage = "Wrong PIN. \(self.remainingAttempts) attempts left."
                     }
+                }
+            }
+        }
+    }
+
+    func unlockWithRecovery(key: String) {
+        guard state == .locked else { return }
+        let cleaned = RecoveryKey(raw: key).raw
+        guard RecoveryKey.isValid(cleaned) else {
+            errorMessage = "Invalid recovery key format."
+            return
+        }
+
+        errorMessage = nil
+        isProcessing = true
+        let box = Unsendable(value: manager)
+
+        inflightTask = Task.detached {
+            do {
+                try box.value.unlockWithRecoveryKey(cleaned)
+                await MainActor.run {
+                    guard self.isProcessing, self.state == .locked else { return }
+                    self.isProcessing = false
+                    self.clearAttempts()
+                    self.totalFailedAttempts = 0
+                    self.refreshEntries()
+                    self.state = .unlocked
+                    self.autoLockService.start()
+                    self.checkBreaches()
+                    self.startSSHAgent()
+                }
+            } catch {
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.isProcessing = false
+                    self.errorMessage = "Invalid recovery key."
                 }
             }
         }

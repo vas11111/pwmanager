@@ -50,6 +50,7 @@ public final class PasswordManager {
 
     public func createVault(
         masterPassword: String,
+        recoveryKey: RecoveryKey? = nil,
         kdfParams: KDFParams = .default
     ) throws {
         try stateLock.withLock {
@@ -59,49 +60,62 @@ public final class PasswordManager {
                 )
             }
 
-            // Atomic create — fails if file already exists (no TOCTOU race)
             guard exclusiveCreate(at: fileURL) else {
                 throw PasswordManagerError.vaultAlreadyExists
             }
 
             do {
-                // 1. Device key — stored in macOS Keychain, never leaves this machine
                 let deviceKey = try keychain.generateAndStoreDeviceKey()
 
-                // 2. Argon2id key derivation
                 let salt = KeyDerivation.generateSalt()
                 let masterKey = try KeyDerivation.deriveKey(
                     from: masterPassword, salt: salt, params: kdfParams
                 )
-
-                // 3. Combine master key with device key (two-secret model)
                 let combinedKey = CryptoEngine.combineMasterWithDeviceKey(
                     masterKey: masterKey, deviceKey: deviceKey
                 )
 
-                // 4. ML-KEM-768 post-quantum encapsulation
                 let keyPair = CryptoEngine.generateMLKEMKeyPair()
                 let encapResult = CryptoEngine.encapsulate(
                     publicKey: keyPair.encapsulationKey
                 )
-
-                // 5. Derive vault key from combined key + quantum shared secret
                 let derivedVaultKey = CryptoEngine.deriveVaultKey(
                     masterKey: combinedKey,
                     quantumSecret: encapResult.sharedSecret
                 )
 
-                // 6. Encrypt vault data and ML-KEM private key
                 let emptyVault = VaultData.empty
                 let encoded = try JSONEncoder().encode(emptyVault)
-                let encryptedEntries = try CryptoEngine.encrypt(
-                    encoded, using: derivedVaultKey
-                )
+                let encryptedEntries = try CryptoEngine.encrypt(encoded, using: derivedVaultKey)
                 let encryptedPrivateKey = try CryptoEngine.encrypt(
                     Data(keyPair.decapsulationKey.keyBytes), using: combinedKey
                 )
 
-                // 7. Compute metadata HMAC
+                // Recovery key slot
+                var recoverySalt: Data? = nil
+                var recoveryKdfMemory: Int? = nil
+                var recoveryKdfIterations: Int? = nil
+                var recoveryKdfParallelism: Int? = nil
+                var encryptedMLKEMPrivateKeyRecovery: Data? = nil
+
+                if let rk = recoveryKey {
+                    let rSalt = KeyDerivation.generateSalt()
+                    let rParams = KDFParams.recovery
+                    let rMasterKey = try KeyDerivation.deriveKey(
+                        from: rk.raw, salt: rSalt, params: rParams
+                    )
+                    let rCombined = CryptoEngine.combineMasterWithDeviceKey(
+                        masterKey: rMasterKey, deviceKey: deviceKey
+                    )
+                    encryptedMLKEMPrivateKeyRecovery = try CryptoEngine.encrypt(
+                        Data(keyPair.decapsulationKey.keyBytes), using: rCombined
+                    )
+                    recoverySalt = rSalt
+                    recoveryKdfMemory = rParams.memory
+                    recoveryKdfIterations = rParams.iterations
+                    recoveryKdfParallelism = rParams.parallelism
+                }
+
                 let metadata = VaultMetadata(
                     version: VaultFile.currentVersion,
                     salt: salt,
@@ -116,7 +130,6 @@ public final class PasswordManager {
                     metadata: try metadata.canonicalBytes()
                 )
 
-                // 8. Write vault file (file already created with 0600 by exclusiveCreate)
                 let file = VaultFile(
                     version: VaultFile.currentVersion,
                     salt: salt,
@@ -127,7 +140,12 @@ public final class PasswordManager {
                     encryptedMLKEMPrivateKey: encryptedPrivateKey,
                     encapsulatedKey: Data(encapResult.ciphertext),
                     encryptedEntries: encryptedEntries,
-                    metadataHMAC: hmac
+                    metadataHMAC: hmac,
+                    recoverySalt: recoverySalt,
+                    recoveryKdfMemory: recoveryKdfMemory,
+                    recoveryKdfIterations: recoveryKdfIterations,
+                    recoveryKdfParallelism: recoveryKdfParallelism,
+                    encryptedMLKEMPrivateKeyRecovery: encryptedMLKEMPrivateKeyRecovery
                 )
 
                 try writeVaultFile(file)
@@ -136,7 +154,6 @@ public final class PasswordManager {
                 self.vaultKey = derivedVaultKey
                 self.vaultFileMetadata = file
             } catch {
-                // Clean up the exclusively-created file on any failure
                 try? FileManager.default.removeItem(at: fileURL)
                 throw error
             }
@@ -248,6 +265,87 @@ public final class PasswordManager {
         }
     }
 
+    public func unlockWithRecoveryKey(_ recoveryKey: String) throws {
+        try stateLock.withLock {
+            let file = try readVaultFile()
+
+            guard file.hasRecoveryKey,
+                  let rSalt = file.recoverySalt,
+                  let rMem = file.recoveryKdfMemory,
+                  let rIter = file.recoveryKdfIterations,
+                  let rPar = file.recoveryKdfParallelism,
+                  let encryptedPrivateKeyRecovery = file.encryptedMLKEMPrivateKeyRecovery else {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let deviceKey: Data
+            do { deviceKey = try keychain.retrieveDeviceKey() }
+            catch { throw PasswordManagerError.deviceKeyMissing }
+
+            let rParams = KDFParams(memory: rMem, iterations: rIter, parallelism: rPar)
+            let rMasterKey = try KeyDerivation.deriveKey(
+                from: recoveryKey, salt: rSalt, params: rParams
+            )
+            let rCombined = CryptoEngine.combineMasterWithDeviceKey(
+                masterKey: rMasterKey, deviceKey: deviceKey
+            )
+
+            let privateKeyData: Data
+            do {
+                privateKeyData = try CryptoEngine.decrypt(
+                    encryptedPrivateKeyRecovery, using: rCombined
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let mlkemPrivateKey: DecapsulationKey
+            do {
+                mlkemPrivateKey = try DecapsulationKey(keyBytes: [UInt8](privateKeyData))
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let sharedSecret: [UInt8]
+            do {
+                sharedSecret = try CryptoEngine.decapsulate(
+                    privateKey: mlkemPrivateKey,
+                    ciphertext: [UInt8](file.encapsulatedKey)
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let derivedVaultKey = CryptoEngine.deriveVaultKey(
+                masterKey: rCombined, quantumSecret: sharedSecret
+            )
+
+            let metadataBytes = try file.metadata.canonicalBytes()
+            guard CryptoEngine.verifyMetadataHMAC(
+                vaultKey: derivedVaultKey,
+                metadata: metadataBytes,
+                expectedHMAC: file.metadataHMAC
+            ) else {
+                throw PasswordManagerError.metadataTampered
+            }
+
+            let decryptedData: Data
+            do {
+                decryptedData = try CryptoEngine.decrypt(
+                    file.encryptedEntries, using: derivedVaultKey
+                )
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            let vault = try JSONDecoder().decode(VaultData.self, from: decryptedData)
+
+            self.vaultData = vault
+            self.vaultKey = derivedVaultKey
+            self.vaultFileMetadata = file
+        }
+    }
+
     public func changeMasterPassword(
         currentPassword: String,
         newPassword: String,
@@ -333,7 +431,12 @@ public final class PasswordManager {
                 encryptedMLKEMPrivateKey: encryptedPrivateKey,
                 encapsulatedKey: Data(encapResult.ciphertext),
                 encryptedEntries: encryptedEntries,
-                metadataHMAC: hmac
+                metadataHMAC: hmac,
+                recoverySalt: nil,
+                recoveryKdfMemory: nil,
+                recoveryKdfIterations: nil,
+                recoveryKdfParallelism: nil,
+                encryptedMLKEMPrivateKeyRecovery: nil
             )
 
             try writeVaultFile(newFile)
@@ -483,7 +586,12 @@ public final class PasswordManager {
             encryptedMLKEMPrivateKey: meta.encryptedMLKEMPrivateKey,
             encapsulatedKey: meta.encapsulatedKey,
             encryptedEntries: encrypted,
-            metadataHMAC: hmac
+            metadataHMAC: hmac,
+            recoverySalt: meta.recoverySalt,
+            recoveryKdfMemory: meta.recoveryKdfMemory,
+            recoveryKdfIterations: meta.recoveryKdfIterations,
+            recoveryKdfParallelism: meta.recoveryKdfParallelism,
+            encryptedMLKEMPrivateKeyRecovery: meta.encryptedMLKEMPrivateKeyRecovery
         )
 
         try writeVaultFile(updatedFile)

@@ -10,7 +10,6 @@ struct VaultData: Codable, Sendable {
 
     static let empty = VaultData(entries: [], sshKeys: [])
 
-    // Backward compatibility: decode vaults that only have "entries"
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         entries = try container.decode([LoginEntry].self, forKey: .entries)
@@ -40,7 +39,7 @@ struct VaultMetadata: Codable, Sendable {
 }
 
 public struct VaultFile: Codable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     let version: Int
     let salt: Data
@@ -53,6 +52,13 @@ public struct VaultFile: Codable, Sendable {
     let encryptedEntries: Data
     let metadataHMAC: Data
 
+    // Recovery key slot (v3)
+    let recoverySalt: Data?
+    let recoveryKdfMemory: Int?
+    let recoveryKdfIterations: Int?
+    let recoveryKdfParallelism: Int?
+    let encryptedMLKEMPrivateKeyRecovery: Data?
+
     var metadata: VaultMetadata {
         VaultMetadata(
             version: version,
@@ -63,5 +69,9 @@ public struct VaultFile: Codable, Sendable {
             mlkemPublicKey: mlkemPublicKey,
             encapsulatedKey: encapsulatedKey
         )
+    }
+
+    var hasRecoveryKey: Bool {
+        encryptedMLKEMPrivateKeyRecovery != nil
     }
 }
