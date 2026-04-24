@@ -53,7 +53,7 @@ public final class SSHAgentServer: @unchecked Sendable {
     private let socketPath: String
     private var serverFD: Int32 = -1
     private var dispatchSource: DispatchSourceRead?
-    private var clientSources: [DispatchSourceRead] = []
+    private var clientSources: [Int32: DispatchSourceRead] = [:]
     private let queue = DispatchQueue(label: "com.pwmanager.ssh-agent", qos: .userInitiated)
     private let lock = NSLock()
 
@@ -122,7 +122,7 @@ public final class SSHAgentServer: @unchecked Sendable {
 
     public func stop() {
         lock.withLock {
-            for source in clientSources {
+            for (_, source) in clientSources {
                 source.cancel()
             }
             clientSources.removeAll()
@@ -155,7 +155,7 @@ public final class SSHAgentServer: @unchecked Sendable {
         source.resume()
 
         lock.withLock {
-            clientSources.append(source)
+            clientSources[clientFD] = source
         }
     }
 
@@ -264,13 +264,10 @@ public final class SSHAgentServer: @unchecked Sendable {
 
     private func removeClient(fd: Int32) {
         lock.withLock {
-            clientSources.removeAll { source in
-                let match = (source as? DispatchObject) != nil
-                if match { source.cancel() }
-                return match
+            if let source = clientSources.removeValue(forKey: fd) {
+                source.cancel()
             }
         }
-        Darwin.close(fd)
     }
 }
 
