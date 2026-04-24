@@ -59,32 +59,26 @@ private struct RecoveryKeyWrapper: Identifiable {
 
 struct RootView: View {
     let viewModel: VaultViewModel
-    @State private var showOverlay = false
+    @State private var contentVisible = true
 
     private var isExpanded: Bool {
         viewModel.state == .unlocked
     }
 
     var body: some View {
-        ZStack {
-            Group {
-                switch viewModel.state {
-                case .loading:
-                    Theme.bg.ignoresSafeArea()
-                case .needsSetup:
-                    CreateVaultView(viewModel: viewModel)
-                case .locked:
-                    UnlockView(viewModel: viewModel)
-                case .unlocked:
-                    VaultContentView(viewModel: viewModel)
-                }
-            }
-
-            if showOverlay {
-                Theme.bg
-                    .transition(.opacity)
+        Group {
+            switch viewModel.state {
+            case .loading:
+                Theme.bg.ignoresSafeArea()
+            case .needsSetup:
+                CreateVaultView(viewModel: viewModel)
+            case .locked:
+                UnlockView(viewModel: viewModel)
+            case .unlocked:
+                VaultContentView(viewModel: viewModel)
             }
         }
+        .opacity(contentVisible ? 1 : 0)
         .frame(
             minWidth: isExpanded ? 780 : 420,
             maxWidth: isExpanded ? .infinity : 420,
@@ -98,10 +92,9 @@ struct RootView: View {
                 || (oldState == .unlocked && newState != .unlocked)
             guard resizing else { return }
 
-            withAnimation(.easeOut(duration: 0.08)) { showOverlay = true }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.easeIn(duration: 0.25)) { showOverlay = false }
+            contentVisible = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.easeIn(duration: 0.15)) { contentVisible = true }
             }
         }
         .sheet(item: Binding(
@@ -168,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.4
+            context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(newFrame, display: true)
         }
