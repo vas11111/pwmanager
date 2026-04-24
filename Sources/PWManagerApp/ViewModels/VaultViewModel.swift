@@ -15,13 +15,21 @@ final class VaultViewModel {
         case unlocked
     }
 
+    enum SidebarSection: String, CaseIterable {
+        case logins = "Logins"
+        case sshKeys = "SSH Keys"
+    }
+
     private(set) var state: AppState = .loading
     private(set) var entries: [PasswordEntry] = []
+    private(set) var sshKeys: [SSHKeyEntry] = []
     private(set) var isProcessing = false
     var errorMessage: String?
     var searchText: String = ""
-    var selectedEntryID: UUID?
+    var selectedItemID: UUID?
+    var selectedSection: SidebarSection = .logins
     var showingAddEntry = false
+    var showingAddSSHKey = false
     var toastMessage: String?
 
     let biometricService = BiometricService()
@@ -67,8 +75,23 @@ final class VaultViewModel {
     }
 
     var selectedEntry: PasswordEntry? {
-        guard let id = selectedEntryID else { return nil }
+        guard let id = selectedItemID else { return nil }
         return entries.first { $0.id == id }
+    }
+
+    var selectedSSHKey: SSHKeyEntry? {
+        guard let id = selectedItemID else { return nil }
+        return sshKeys.first { $0.id == id }
+    }
+
+    var filteredSSHKeys: [SSHKeyEntry] {
+        let sorted = sshKeys.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        guard !searchText.isEmpty else { return sorted }
+        let query = searchText.lowercased()
+        return sorted.filter {
+            $0.name.lowercased().contains(query)
+                || $0.comment.lowercased().contains(query)
+        }
     }
 
     var isLockedOut: Bool {
@@ -212,9 +235,10 @@ final class VaultViewModel {
         sshAgentRunning = false
         manager.lock()
         entries = []
+        sshKeys = []
         breachResults = [:]
         Task { await breachChecker.clearCache() }
-        selectedEntryID = nil
+        selectedItemID = nil
         searchText = ""
         errorMessage = nil
         state = .locked
@@ -228,25 +252,25 @@ final class VaultViewModel {
     func selectNext() {
         let list = filteredEntries
         guard !list.isEmpty else { return }
-        guard let current = selectedEntryID,
+        guard let current = selectedItemID,
               let idx = list.firstIndex(where: { $0.id == current }),
               idx + 1 < list.count else {
-            selectedEntryID = list.first?.id
+            selectedItemID = list.first?.id
             return
         }
-        selectedEntryID = list[idx + 1].id
+        selectedItemID = list[idx + 1].id
     }
 
     func selectPrevious() {
         let list = filteredEntries
         guard !list.isEmpty else { return }
-        guard let current = selectedEntryID,
+        guard let current = selectedItemID,
               let idx = list.firstIndex(where: { $0.id == current }),
               idx > 0 else {
-            selectedEntryID = list.last?.id
+            selectedItemID = list.last?.id
             return
         }
-        selectedEntryID = list[idx - 1].id
+        selectedItemID = list[idx - 1].id
     }
 
     // MARK: - Entry Management
@@ -272,7 +296,7 @@ final class VaultViewModel {
         do {
             try manager.addEntry(entry)
             refreshEntries()
-            selectedEntryID = entry.id
+            selectedItemID = entry.id
         } catch {
             errorMessage = Self.friendlyError(error)
         }
@@ -306,7 +330,7 @@ final class VaultViewModel {
         }()
         do {
             try manager.deleteEntry(id: id)
-            if selectedEntryID == id { selectedEntryID = nextID }
+            if selectedItemID == id { selectedItemID = nextID }
             refreshEntries()
         } catch {
             errorMessage = Self.friendlyError(error)
@@ -316,9 +340,11 @@ final class VaultViewModel {
     func refreshEntries() {
         do {
             entries = try manager.allEntries()
+            sshKeys = try manager.allSSHKeys()
             if sshAgentRunning { updateSSHKeySnapshot() }
         } catch {
             entries = []
+            sshKeys = []
             if !PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
                 toastMessage = "Vault file was removed"
                 lock()
@@ -370,37 +396,50 @@ final class VaultViewModel {
     }
 
     private func updateSSHKeySnapshot() {
-        let keys = entries.compactMap { entry -> SSHKey? in
-            guard let seed = entry.sshKeyData else { return nil }
-            return SSHKey(seed: seed, comment: entry.siteName, entryID: entry.id)
+        let keys = sshKeys.compactMap { entry -> SSHKey? in
+            SSHKey(seed: entry.privateKeyData, comment: entry.comment, entryID: entry.id)
         }
         sshAgent.updateKeys(keys)
     }
 
-    func generateSSHKey(for entry: PasswordEntry) {
+    func addSSHKey(name: String, comment: String, notes: String?) {
         guard state == .unlocked else { return }
         let privateKey = Curve25519.Signing.PrivateKey()
-        var updated = entry
-        updated.sshKeyData = privateKey.rawRepresentation
-        updated.modifiedAt = Date()
+        let entry = SSHKeyEntry(
+            name: name,
+            privateKeyData: privateKey.rawRepresentation,
+            comment: comment.isEmpty ? name : comment,
+            notes: notes?.isEmpty == true ? nil : notes
+        )
         do {
-            try manager.updateEntry(updated)
+            try manager.addSSHKey(entry)
             refreshEntries()
+            selectedItemID = entry.id
+            selectedSection = .sshKeys
             toastMessage = "SSH key generated"
         } catch {
             errorMessage = Self.friendlyError(error)
         }
     }
 
-    func removeSSHKey(for entry: PasswordEntry) {
+    func updateSSHKeyEntry(_ key: SSHKeyEntry) {
         guard state == .unlocked else { return }
-        var updated = entry
-        updated.sshKeyData = nil
+        var updated = key
         updated.modifiedAt = Date()
         do {
-            try manager.updateEntry(updated)
+            try manager.updateSSHKey(updated)
             refreshEntries()
-            toastMessage = "SSH key removed"
+        } catch {
+            errorMessage = Self.friendlyError(error)
+        }
+    }
+
+    func deleteSSHKey(id: UUID) {
+        guard state == .unlocked else { return }
+        do {
+            try manager.deleteSSHKey(id: id)
+            if selectedItemID == id { selectedItemID = nil }
+            refreshEntries()
         } catch {
             errorMessage = Self.friendlyError(error)
         }

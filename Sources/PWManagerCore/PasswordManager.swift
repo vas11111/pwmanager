@@ -412,6 +412,52 @@ public final class PasswordManager {
         }
     }
 
+    // MARK: - SSH Key Management
+
+    public func addSSHKey(_ key: SSHKeyEntry) throws {
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            vaultData!.sshKeys.append(key)
+            try save()
+        }
+    }
+
+    public func deleteSSHKey(id: UUID) throws {
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            guard let index = vaultData!.sshKeys.firstIndex(where: { $0.id == id }) else {
+                throw PasswordManagerError.entryNotFound(id)
+            }
+            vaultData!.sshKeys.remove(at: index)
+            try save()
+        }
+    }
+
+    public func updateSSHKey(_ key: SSHKeyEntry) throws {
+        try stateLock.withLock {
+            guard vaultData != nil else { throw PasswordManagerError.vaultLocked }
+            guard let idx = vaultData!.sshKeys.firstIndex(where: { $0.id == key.id }) else {
+                throw PasswordManagerError.entryNotFound(key.id)
+            }
+            vaultData!.sshKeys[idx] = key
+            try save()
+        }
+    }
+
+    public func allSSHKeys() throws -> [SSHKeyEntry] {
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+            return data.sshKeys
+        }
+    }
+
+    public func allItems() throws -> [VaultItem] {
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+            return data.allItems
+        }
+    }
+
     // MARK: - Persistence
 
     private func save() throws {

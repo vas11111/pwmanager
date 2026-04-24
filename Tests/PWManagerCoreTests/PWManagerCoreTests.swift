@@ -882,16 +882,17 @@ struct ExploitTests {
         try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
 
         let sshKey = Curve25519.Signing.PrivateKey()
-        try m.addEntry(PasswordEntry(
-            siteName: "SSHServer", username: "root", password: "pw",
-            sshKeyData: sshKey.rawRepresentation
+        try m.addSSHKey(SSHKeyEntry(
+            name: "SSHServer",
+            privateKeyData: sshKey.rawRepresentation,
+            comment: "root@server"
         ))
 
         let raw = try String(data: Data(contentsOf: env.url), encoding: .utf8) ?? ""
         let keyB64 = sshKey.rawRepresentation.base64EncodedString()
         #expect(!raw.contains(keyB64))
         #expect(!raw.contains("SSHServer"))
-        #expect(!raw.contains("root"))
+        #expect(!raw.contains("root@server"))
     }
 
     // ATTACK 11: Version downgrade rejected

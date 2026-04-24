@@ -24,7 +24,6 @@ struct EntryDetailView: View {
                     totpRow(secret)
                 }
 
-                SSHKeyRow(entry: entry, viewModel: viewModel)
                 BreachStatusRow(entry: entry, viewModel: viewModel)
 
                 if !entry.history.isEmpty {

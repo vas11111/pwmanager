@@ -1,9 +1,26 @@
 import Foundation
 
 struct VaultData: Codable, Sendable {
-    var entries: [PasswordEntry]
+    var entries: [LoginEntry]
+    var sshKeys: [SSHKeyEntry]
 
-    static let empty = VaultData(entries: [])
+    var allItems: [VaultItem] {
+        entries.map { .login($0) } + sshKeys.map { .sshKey($0) }
+    }
+
+    static let empty = VaultData(entries: [], sshKeys: [])
+
+    // Backward compatibility: decode vaults that only have "entries"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entries = try container.decode([LoginEntry].self, forKey: .entries)
+        sshKeys = try container.decodeIfPresent([SSHKeyEntry].self, forKey: .sshKeys) ?? []
+    }
+
+    init(entries: [LoginEntry], sshKeys: [SSHKeyEntry] = []) {
+        self.entries = entries
+        self.sshKeys = sshKeys
+    }
 }
 
 struct VaultMetadata: Codable, Sendable {
