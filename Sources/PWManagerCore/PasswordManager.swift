@@ -122,7 +122,11 @@ public final class PasswordManager {
                     kdfIterations: kdfParams.iterations,
                     kdfParallelism: kdfParams.parallelism,
                     mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
-                    encapsulatedKey: Data(encapResult.ciphertext)
+                    encapsulatedKey: Data(encapResult.ciphertext),
+                    recoverySalt: recoverySalt,
+                    recoveryKdfMemory: recoveryKdfMemory,
+                    recoveryKdfIterations: recoveryKdfIterations,
+                    recoveryKdfParallelism: recoveryKdfParallelism
                 )
                 let hmac = CryptoEngine.computeMetadataHMAC(
                     vaultKey: derivedVaultKey,
@@ -415,20 +419,6 @@ public final class PasswordManager {
                 Data(keyPair.decapsulationKey.keyBytes), using: newCombined
             )
 
-            let metadata = VaultMetadata(
-                version: VaultFile.currentVersion,
-                salt: newSalt,
-                kdfMemory: kdfParams.memory,
-                kdfIterations: kdfParams.iterations,
-                kdfParallelism: kdfParams.parallelism,
-                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
-                encapsulatedKey: Data(encapResult.ciphertext)
-            )
-            let hmac = CryptoEngine.computeMetadataHMAC(
-                vaultKey: newVaultKey,
-                metadata: try metadata.canonicalBytes()
-            )
-
             // Recovery key slot
             var recoverySalt: Data? = nil
             var recoveryKdfMemory: Int? = nil
@@ -453,6 +443,24 @@ public final class PasswordManager {
                 recoveryKdfIterations = rParams.iterations
                 recoveryKdfParallelism = rParams.parallelism
             }
+
+            let metadata = VaultMetadata(
+                version: VaultFile.currentVersion,
+                salt: newSalt,
+                kdfMemory: kdfParams.memory,
+                kdfIterations: kdfParams.iterations,
+                kdfParallelism: kdfParams.parallelism,
+                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                encapsulatedKey: Data(encapResult.ciphertext),
+                recoverySalt: recoverySalt,
+                recoveryKdfMemory: recoveryKdfMemory,
+                recoveryKdfIterations: recoveryKdfIterations,
+                recoveryKdfParallelism: recoveryKdfParallelism
+            )
+            let hmac = CryptoEngine.computeMetadataHMAC(
+                vaultKey: newVaultKey,
+                metadata: try metadata.canonicalBytes()
+            )
 
             let newFile = VaultFile(
                 version: VaultFile.currentVersion,

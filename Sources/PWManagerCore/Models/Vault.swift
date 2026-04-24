@@ -30,6 +30,10 @@ struct VaultMetadata: Codable, Sendable {
     let kdfParallelism: Int
     let mlkemPublicKey: Data
     let encapsulatedKey: Data
+    let recoverySalt: Data?
+    let recoveryKdfMemory: Int?
+    let recoveryKdfIterations: Int?
+    let recoveryKdfParallelism: Int?
 
     func canonicalBytes() throws -> Data {
         let encoder = JSONEncoder()
@@ -67,7 +71,11 @@ public struct VaultFile: Codable, Sendable {
             kdfIterations: kdfIterations,
             kdfParallelism: kdfParallelism,
             mlkemPublicKey: mlkemPublicKey,
-            encapsulatedKey: encapsulatedKey
+            encapsulatedKey: encapsulatedKey,
+            recoverySalt: recoverySalt,
+            recoveryKdfMemory: recoveryKdfMemory,
+            recoveryKdfIterations: recoveryKdfIterations,
+            recoveryKdfParallelism: recoveryKdfParallelism
         )
     }
 
