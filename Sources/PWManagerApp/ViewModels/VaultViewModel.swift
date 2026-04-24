@@ -206,6 +206,7 @@ final class VaultViewModel {
         manager.lock()
         entries = []
         breachResults = [:]
+        Task { await breachChecker.clearCache() }
         selectedEntryID = nil
         searchText = ""
         errorMessage = nil

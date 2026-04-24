@@ -1,9 +1,29 @@
 import Foundation
 import CryptoKit
 
+public enum BreachStatus: Sendable {
+    case breached(Int)
+    case safe
+    case unknown
+}
+
 public struct BreachResult: Sendable {
-    public let isBreached: Bool
-    public let occurrences: Int
+    public let status: BreachStatus
+
+    public var isBreached: Bool {
+        if case .breached = status { return true }
+        return false
+    }
+
+    public var occurrences: Int {
+        if case .breached(let count) = status { return count }
+        return 0
+    }
+
+    public var isUnknown: Bool {
+        if case .unknown = status { return true }
+        return false
+    }
 }
 
 public actor BreachChecker {
@@ -24,7 +44,7 @@ public actor BreachChecker {
         if let cached = cache[hex] { return cached }
 
         guard let url = URL(string: "https://api.pwnedpasswords.com/range/\(prefix)") else {
-            return BreachResult(isBreached: false, occurrences: 0)
+            return BreachResult(status: .unknown)
         }
 
         do {
@@ -36,26 +56,25 @@ public actor BreachChecker {
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let body = String(data: data, encoding: .utf8) else {
-                return BreachResult(isBreached: false, occurrences: 0)
+                return BreachResult(status: .unknown)
             }
 
-            // Response format: SUFFIX:COUNT\r\n per line
             for line in body.components(separatedBy: "\r\n") {
                 let parts = line.split(separator: ":")
                 guard parts.count == 2 else { continue }
                 if parts[0].uppercased() == suffix {
                     let count = Int(parts[1]) ?? 0
-                    let result = BreachResult(isBreached: true, occurrences: count)
+                    let result = BreachResult(status: .breached(count))
                     cache[hex] = result
                     return result
                 }
             }
 
-            let result = BreachResult(isBreached: false, occurrences: 0)
+            let result = BreachResult(status: .safe)
             cache[hex] = result
             return result
         } catch {
-            return BreachResult(isBreached: false, occurrences: 0)
+            return BreachResult(status: .unknown)
         }
     }
 

@@ -179,6 +179,15 @@ struct EntryDetailView: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.red)
                         }
+                    } else if result.isUnknown {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.circle")
+                                .foregroundStyle(.orange)
+                                .font(.system(size: 12))
+                            Text("Unable to check")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.orange)
+                        }
                     } else {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.shield.fill")
