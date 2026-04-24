@@ -3,6 +3,7 @@ import SwiftUI
 struct UnlockView: View {
     let viewModel: VaultViewModel
     @State private var password = ""
+    @State private var shakeError = false
     @FocusState private var isFocused: Bool
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
@@ -98,6 +99,7 @@ struct UnlockView: View {
                 }
             }
             .frame(width: 400)
+            .shake(shakeError)
         }
         .task {
             if canUseTouchID && !viewModel.isProcessing {
@@ -106,6 +108,15 @@ struct UnlockView: View {
         }
         .onChange(of: viewModel.state) { _, newState in
             if newState == .unlocked { password = "" }
+        }
+        .onChange(of: viewModel.errorMessage) { _, msg in
+            if msg != nil {
+                shakeError = true
+                Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    shakeError = false
+                }
+            }
         }
     }
 

@@ -45,6 +45,29 @@ struct EntryDetailView: View {
             .padding(32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider().overlay(Theme.border)
+                HStack(spacing: 10) {
+                    quickAction(icon: "key", label: "Password") {
+                        viewModel.copyToClipboard(entry.password)
+                    }
+                    quickAction(icon: "person", label: "Username") {
+                        viewModel.copyToClipboard(entry.username)
+                    }
+                    if let secret = entry.totpSecret, !secret.isEmpty,
+                       let code = TOTPGenerator.generateCode(secret: secret) {
+                        quickAction(icon: "clock.badge.checkmark", label: "2FA") {
+                            viewModel.copyToClipboard(code)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
+            }
+        }
         .alert("Delete Entry?", isPresented: $showingDeleteConfirm) {
             Button("Delete", role: .destructive) { viewModel.deleteEntry(id: entry.id) }
             Button("Cancel", role: .cancel) {}
@@ -241,6 +264,30 @@ struct EntryDetailView: View {
                 .foregroundStyle(Theme.text3)
         }
         .padding(.vertical, 12)
+    }
+
+    // MARK: - Quick Actions
+
+    private func quickAction(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Copy \(label)")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(Theme.text2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Theme.bgField)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous)
+                    .stroke(Theme.border, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(GhostButtonStyle())
+        .help("Copy \(label.lowercased())")
     }
 
     // MARK: - Helpers

@@ -258,16 +258,26 @@ struct VaultContentView: View {
             }
             .onHover { hovered = $0 ? entry.id : nil }
             .contextMenu {
-                Button("Copy Password") { viewModel.copyToClipboard(entry.password) }
-                Button("Copy Username") { viewModel.copyToClipboard(entry.username) }
+                Button { viewModel.copyToClipboard(entry.password) } label: {
+                    Label("Copy Password", systemImage: "key")
+                }
+                Button { viewModel.copyToClipboard(entry.username) } label: {
+                    Label("Copy Username", systemImage: "person")
+                }
                 if let secret = entry.totpSecret, !secret.isEmpty,
                    let code = TOTPGenerator.generateCode(secret: secret) {
-                    Button("Copy 2FA Code") { viewModel.copyToClipboard(code) }
+                    Button { viewModel.copyToClipboard(code) } label: {
+                        Label("Copy 2FA Code", systemImage: "clock.badge.checkmark")
+                    }
                 }
                 Divider()
-                Button("Edit") { startEditLogin(entry) }
+                Button { startEditLogin(entry) } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
                 Divider()
-                Button("Delete", role: .destructive) { viewModel.deleteEntry(id: entry.id) }
+                Button(role: .destructive) { viewModel.deleteEntry(id: entry.id) } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
     }
@@ -293,10 +303,14 @@ struct VaultContentView: View {
             .onHover { hovered = $0 ? key.id : nil }
             .contextMenu {
                 if let sshKey = SSHKey(seed: key.privateKeyData, comment: key.comment, entryID: key.id) {
-                    Button("Copy Public Key") { viewModel.copyToClipboard(sshKey.authorizedKeysLine) }
+                    Button { viewModel.copyToClipboard(sshKey.authorizedKeysLine) } label: {
+                        Label("Copy Public Key", systemImage: "doc.on.doc")
+                    }
                 }
                 Divider()
-                Button("Delete", role: .destructive) { viewModel.deleteSSHKey(id: key.id) }
+                Button(role: .destructive) { viewModel.deleteSSHKey(id: key.id) } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
     }

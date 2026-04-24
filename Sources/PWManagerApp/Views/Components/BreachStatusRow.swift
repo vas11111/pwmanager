@@ -4,6 +4,7 @@ import PWManagerCore
 struct BreachStatusRow: View {
     let entry: PasswordEntry
     let viewModel: VaultViewModel
+    @State private var refreshAngle: Angle = .zero
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,12 +55,20 @@ struct BreachStatusRow: View {
                 Spacer()
 
                 Button {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        refreshAngle = .degrees(360)
+                    }
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.5))
+                        refreshAngle = .zero
+                    }
                     viewModel.checkBreach(for: entry)
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Theme.text3)
                         .frame(width: 24, height: 24)
+                        .rotationEffect(refreshAngle)
                 }
                 .buttonStyle(GhostButtonStyle())
                 .help("Recheck")

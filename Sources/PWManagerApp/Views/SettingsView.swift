@@ -42,6 +42,7 @@ struct SettingsView: View {
                     Text("15 minutes").tag(15)
                     Text("30 minutes").tag(30)
                 }
+                .annotation("Vault locks automatically after this period of inactivity.")
             }
 
             Section("Clipboard") {
@@ -50,11 +51,13 @@ struct SettingsView: View {
                     Text("30 seconds").tag(30)
                     Text("60 seconds").tag(60)
                 }
+                .annotation("Copied passwords are cleared from the clipboard after this delay.")
             }
 
             Section("Touch ID") {
                 if biometricService.isAvailable {
                     Toggle("Unlock with Touch ID", isOn: $touchIDEnabled)
+                        .annotation("Use biometric authentication instead of typing your master password.")
                         .onChange(of: touchIDEnabled) { _, newValue in
                             if !newValue {
                                 try? biometricService.deleteStoredPassword()
