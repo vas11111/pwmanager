@@ -57,17 +57,31 @@ public final class SSHAgentServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.pwmanager.ssh-agent", qos: .userInitiated)
     private let lock = NSLock()
 
-    public var keyProvider: (() -> [SSHKey])?
-    public var onSignRequest: ((SSHKey, Data) -> Void)?
+    // Thread-safe key snapshot — updated on main actor, read on agent queue
+    private var keySnapshot: [SSHKey] = []
+    private let snapshotLock = NSLock()
+
+    public var onSignRequest: (@Sendable (SSHKey, Data) -> Void)?
 
     public init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".pwmanager", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         self.socketPath = dir.appendingPathComponent("agent.sock").path
     }
 
     public var socketURL: String { socketPath }
+
+    public func updateKeys(_ keys: [SSHKey]) {
+        snapshotLock.withLock { keySnapshot = keys }
+    }
+
+    private func currentKeys() -> [SSHKey] {
+        snapshotLock.withLock { keySnapshot }
+    }
 
     public func start() throws {
         stop()
@@ -96,6 +110,15 @@ public final class SSHAgentServer: @unchecked Sendable {
             }
         }
         guard bindResult == 0 else {
+            Darwin.close(fd)
+            throw SSHAgentError.bindFailed
+        }
+
+        // Verify we own the socket (not a symlink)
+        var stat = Darwin.stat()
+        guard lstat(socketPath, &stat) == 0,
+              (stat.st_mode & S_IFMT) == S_IFSOCK else {
+            unlink(socketPath)
             Darwin.close(fd)
             throw SSHAgentError.bindFailed
         }
@@ -132,6 +155,9 @@ public final class SSHAgentServer: @unchecked Sendable {
         if serverFD >= 0 {
             serverFD = -1
         }
+        // Drain the queue to ensure no in-flight handlers use stale keys
+        queue.sync {}
+        snapshotLock.withLock { keySnapshot = [] }
         unlink(socketPath)
     }
 
@@ -205,7 +231,7 @@ public final class SSHAgentServer: @unchecked Sendable {
     // MARK: - Protocol Handlers
 
     private func handleRequestIdentities(fd: Int32) {
-        let keys = keyProvider?() ?? []
+        let keys = currentKeys()
         var response = Data()
         response.append(AgentMessage.identitiesAnswer.rawValue)
         response.appendUInt32(UInt32(keys.count))
@@ -224,7 +250,7 @@ public final class SSHAgentServer: @unchecked Sendable {
             return
         }
 
-        let keys = keyProvider?() ?? []
+        let keys = currentKeys()
         guard let key = keys.first(where: { $0.publicKeyBlob == keyBlob }) else {
             sendFailure(fd: fd)
             return

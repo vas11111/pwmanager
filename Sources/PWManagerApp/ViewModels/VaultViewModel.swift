@@ -316,6 +316,7 @@ final class VaultViewModel {
     func refreshEntries() {
         do {
             entries = try manager.allEntries()
+            if sshAgentRunning { updateSSHKeySnapshot() }
         } catch {
             entries = []
             if !PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
@@ -352,24 +353,26 @@ final class VaultViewModel {
     // MARK: - SSH Agent
 
     private func startSSHAgent() {
-        sshAgent.keyProvider = { [weak self] in
-            guard let self, self.state == .unlocked else { return [] }
-            return self.entries.compactMap { entry in
-                guard let seed = entry.sshKeyData else { return nil }
-                return SSHKey(seed: seed, comment: entry.siteName, entryID: entry.id)
-            }
-        }
         sshAgent.onSignRequest = { [weak self] key, _ in
             Task { @MainActor in
                 self?.toastMessage = "SSH signed: \(key.comment)"
             }
         }
+        updateSSHKeySnapshot()
         do {
             try sshAgent.start()
             sshAgentRunning = true
         } catch {
             sshAgentRunning = false
         }
+    }
+
+    private func updateSSHKeySnapshot() {
+        let keys = entries.compactMap { entry -> SSHKey? in
+            guard let seed = entry.sshKeyData else { return nil }
+            return SSHKey(seed: seed, comment: entry.siteName, entryID: entry.id)
+        }
+        sshAgent.updateKeys(keys)
     }
 
     func generateSSHKey(for entry: PasswordEntry) {
