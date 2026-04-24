@@ -1,5 +1,4 @@
 import SwiftUI
-import PWManagerCore
 
 struct RecoveryUnlockView: View {
     let viewModel: VaultViewModel

@@ -5,6 +5,60 @@ import PWManagerCore
 
 private struct Unsendable<T>: @unchecked Sendable { let value: T }
 
+private enum RateLimitStore {
+    static let service = "com.pwmanager.ratelimit"
+    static let account = "attempt-data"
+
+    struct AttemptData: Codable {
+        var totalFailed: Int = 0
+        var timestamps: [Date] = []
+    }
+
+    static func load() -> AttemptData {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let decoded = try? JSONDecoder().decode(AttemptData.self, from: data) else {
+            return AttemptData()
+        }
+        return decoded
+    }
+
+    static func save(_ data: AttemptData) {
+        guard let encoded = try? JSONEncoder().encode(data) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: encoded]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var newItem = query
+            newItem[kSecValueData as String] = encoded
+            newItem[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            SecItemAdd(newItem as CFDictionary, nil)
+        }
+    }
+
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
 @MainActor
 @Observable
 final class VaultViewModel {
@@ -44,30 +98,24 @@ final class VaultViewModel {
     private var inflightTask: Task<Void, Never>?
 
     @ObservationIgnored
-    @AppStorage("failedUnlockAttempts") private var failedAttempts = 0
-    @ObservationIgnored
-    @AppStorage("lockoutUntilTimestamp") private var lockoutUntilTimestamp: Double = 0
-
-    @ObservationIgnored
     @AppStorage("clipboardClearSeconds") private var clipboardClearSeconds = 30
-
-    private var lockoutUntil: Date? {
-        get { lockoutUntilTimestamp > 0 ? Date(timeIntervalSince1970: lockoutUntilTimestamp) : nil }
-        set { lockoutUntilTimestamp = newValue?.timeIntervalSince1970 ?? 0 }
-    }
 
     private static let attemptsPerHour = 3
     private static let maxTotalAttempts = 25
     private static let lockoutDuration: TimeInterval = 3600
     private static let minimumClipboardClear = 10
 
-    @ObservationIgnored
-    @AppStorage("totalFailedAttempts") private var totalFailedAttempts = 0
-    @ObservationIgnored
-    @AppStorage("hourlyAttemptTimestamps") private var hourlyTimestampsData = Data()
+    @ObservationIgnored private var rateLimits = RateLimitStore.load()
 
     init() {
         self.manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
+        Self.removeStaleUserDefaults()
+    }
+
+    private static func removeStaleUserDefaults() {
+        let stale = ["failedUnlockAttempts", "lockoutUntilTimestamp",
+                     "totalFailedAttempts", "hourlyAttemptTimestamps"]
+        for key in stale { UserDefaults.standard.removeObject(forKey: key) }
     }
 
     var filteredEntries: [PasswordEntry] {
@@ -107,44 +155,31 @@ final class VaultViewModel {
 
     var lockoutRemaining: Int {
         guard isLockedOut else { return 0 }
-        let timestamps = decodeTimestamps()
-        guard let oldest = timestamps.first else { return 0 }
+        guard let oldest = rateLimits.timestamps.first else { return 0 }
         let unlockTime = oldest.addingTimeInterval(Self.lockoutDuration)
         return max(0, Int(unlockTime.timeIntervalSinceNow.rounded(.up)))
     }
 
     var remainingAttempts: Int {
-        max(0, Self.maxTotalAttempts - totalFailedAttempts)
+        max(0, Self.maxTotalAttempts - rateLimits.totalFailed)
     }
 
     private var recentAttemptCount: Int {
         let cutoff = Date().addingTimeInterval(-Self.lockoutDuration)
-        return decodeTimestamps().filter { $0 > cutoff }.count
+        return rateLimits.timestamps.filter { $0 > cutoff }.count
     }
 
     private func recordFailedAttempt() {
-        totalFailedAttempts += 1
-        var timestamps = decodeTimestamps()
-        timestamps.append(Date())
+        rateLimits.totalFailed += 1
+        rateLimits.timestamps.append(Date())
         let cutoff = Date().addingTimeInterval(-Self.lockoutDuration)
-        timestamps = timestamps.filter { $0 > cutoff }
-        encodeTimestamps(timestamps)
+        rateLimits.timestamps = rateLimits.timestamps.filter { $0 > cutoff }
+        RateLimitStore.save(rateLimits)
     }
 
     private func clearAttempts() {
-        failedAttempts = 0
-        lockoutUntil = nil
-        var timestamps: [Date] = []
-        encodeTimestamps(timestamps)
-    }
-
-    private func decodeTimestamps() -> [Date] {
-        guard !hourlyTimestampsData.isEmpty else { return [] }
-        return (try? JSONDecoder().decode([Date].self, from: hourlyTimestampsData)) ?? []
-    }
-
-    private func encodeTimestamps(_ timestamps: [Date]) {
-        hourlyTimestampsData = (try? JSONEncoder().encode(timestamps)) ?? Data()
+        rateLimits.timestamps = []
+        RateLimitStore.save(rateLimits)
     }
 
     private func selfDestructVault() {
@@ -154,8 +189,8 @@ final class VaultViewModel {
         sshKeys = []
         breachResults = [:]
         selectedItemID = nil
-        totalFailedAttempts = 0
-        encodeTimestamps([])
+        RateLimitStore.clear()
+        rateLimits = RateLimitStore.AttemptData()
         errorMessage = nil
         state = .needsSetup
         toastMessage = "Vault destroyed after too many failed attempts"
@@ -226,7 +261,7 @@ final class VaultViewModel {
         }
 
         // Self-destruct check
-        if totalFailedAttempts >= Self.maxTotalAttempts {
+        if rateLimits.totalFailed >= Self.maxTotalAttempts {
             selfDestructVault()
             return
         }
@@ -249,7 +284,8 @@ final class VaultViewModel {
                     guard self.isProcessing, self.state == .locked else { return }
                     self.isProcessing = false
                     self.clearAttempts()
-                    self.totalFailedAttempts = 0
+                    self.rateLimits.totalFailed = 0
+                    RateLimitStore.save(self.rateLimits)
                     self.refreshEntries()
                     self.state = .unlocked
                     self.autoLockService.start()
@@ -263,7 +299,7 @@ final class VaultViewModel {
                     self.isProcessing = false
                     self.recordFailedAttempt()
 
-                    if self.totalFailedAttempts >= Self.maxTotalAttempts {
+                    if self.rateLimits.totalFailed >= Self.maxTotalAttempts {
                         self.selfDestructVault()
                     } else if self.isLockedOut {
                         self.errorMessage = "3 wrong attempts. Locked for 1 hour."
@@ -294,7 +330,8 @@ final class VaultViewModel {
                     guard self.isProcessing, self.state == .locked else { return }
                     self.isProcessing = false
                     self.clearAttempts()
-                    self.totalFailedAttempts = 0
+                    self.rateLimits.totalFailed = 0
+                    RateLimitStore.save(self.rateLimits)
                     self.refreshEntries()
                     self.state = .unlocked
                     self.autoLockService.start()
@@ -352,6 +389,22 @@ final class VaultViewModel {
         searchText = ""
         errorMessage = nil
         state = .locked
+    }
+
+    func changePIN(currentPassword: String, newPassword: String) async throws -> String {
+        guard state == .unlocked else { throw PasswordManagerError.vaultLocked }
+        let rk = RecoveryKey()
+        let box = Unsendable(value: manager)
+        try await Task.detached {
+            try box.value.changeMasterPassword(
+                currentPassword: currentPassword,
+                newPassword: newPassword,
+                newRecoveryKey: rk
+            )
+        }.value
+        refreshEntries()
+        offerTouchID(password: newPassword)
+        return rk.formatted
     }
 
     func copySelectedPassword() {

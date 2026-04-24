@@ -38,7 +38,7 @@ struct PWManagerApp: App {
         .windowStyle(.hiddenTitleBar)
 
         Settings {
-            SettingsView()
+            SettingsView(viewModel: viewModel)
                 .preferredColorScheme(.dark)
         }
 

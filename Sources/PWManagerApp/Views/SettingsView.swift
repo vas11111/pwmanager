@@ -1,7 +1,8 @@
 import SwiftUI
-import PWManagerCore
 
 struct SettingsView: View {
+    let viewModel: VaultViewModel
+
     @AppStorage("autoLockMinutes") private var autoLockMinutes = 5
     @AppStorage("clipboardClearSeconds") private var clipboardClearSeconds = 30
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
@@ -30,7 +31,7 @@ struct SettingsView: View {
                     showChangePassword = true
                 }
                 .sheet(isPresented: $showChangePassword) {
-                    ChangePasswordView()
+                    ChangePasswordView(viewModel: viewModel)
                         .preferredColorScheme(.dark)
                 }
             }

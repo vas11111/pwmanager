@@ -2,6 +2,7 @@ import SwiftUI
 import PWManagerCore
 
 struct ChangePasswordView: View {
+    let viewModel: VaultViewModel
     @Environment(\.dismiss) private var dismiss
 
     enum Step { case currentPin, newPin, confirmPin }
@@ -168,42 +169,32 @@ struct ChangePasswordView: View {
         isProcessing = true
         errorMessage = nil
 
-        let manager = PasswordManager(fileURL: PasswordManager.defaultFileURL())
         let current = currentPin
         let new = newPin
-        let rk = RecoveryKey()
 
-        Task.detached {
+        Task {
             do {
-                try manager.unlock(masterPassword: current)
-                try manager.changeMasterPassword(
+                let key = try await viewModel.changePIN(
                     currentPassword: current,
-                    newPassword: new,
-                    newRecoveryKey: rk
+                    newPassword: new
                 )
-                await MainActor.run {
-                    isProcessing = false
-                    newRecoveryKey = rk.formatted
-                    withAnimation(.spring(duration: 0.3)) { success = true }
-                }
+                isProcessing = false
+                newRecoveryKey = key
+                withAnimation(.spring(duration: 0.3)) { success = true }
             } catch let error as PasswordManagerError {
-                await MainActor.run {
-                    isProcessing = false
-                    switch error {
-                    case .incorrectPassword:
-                        triggerShake("Current PIN is incorrect.")
-                        step = .currentPin
-                        currentPin = ""
-                        newPin = ""
-                    default:
-                        errorMessage = "An error occurred."
-                    }
+                isProcessing = false
+                switch error {
+                case .incorrectPassword:
+                    triggerShake("Current PIN is incorrect.")
+                    step = .currentPin
+                    currentPin = ""
+                    newPin = ""
+                default:
+                    errorMessage = "An error occurred."
                 }
             } catch {
-                await MainActor.run {
-                    isProcessing = false
-                    errorMessage = "An unexpected error occurred."
-                }
+                isProcessing = false
+                errorMessage = "An unexpected error occurred."
             }
         }
     }

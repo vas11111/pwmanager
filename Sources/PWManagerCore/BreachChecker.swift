@@ -28,8 +28,14 @@ public struct BreachResult: Sendable {
 
 public actor BreachChecker {
     private var cache: [String: BreachResult] = [:]
+    private let cacheHMACKey = SymmetricKey(size: .bits256)
 
     public init() {}
+
+    private func cacheKey(for hex: String) -> String {
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(hex.utf8), using: cacheHMACKey)
+        return Data(mac).prefix(16).base64EncodedString()
+    }
 
     /// Checks if a password has appeared in known data breaches using the
     /// Have I Been Pwned k-anonymity API. Only the first 5 characters of
@@ -41,7 +47,8 @@ public actor BreachChecker {
         let prefix = String(hex.prefix(5))
         let suffix = String(hex.dropFirst(5))
 
-        if let cached = cache[hex] { return cached }
+        let cid = cacheKey(for: hex)
+        if let cached = cache[cid] { return cached }
 
         guard let url = URL(string: "https://api.pwnedpasswords.com/range/\(prefix)") else {
             return BreachResult(status: .unknown)
@@ -65,13 +72,13 @@ public actor BreachChecker {
                 if parts[0].uppercased() == suffix {
                     let count = Int(parts[1]) ?? 0
                     let result = BreachResult(status: .breached(count))
-                    cache[hex] = result
+                    cache[cid] = result
                     return result
                 }
             }
 
             let result = BreachResult(status: .safe)
-            cache[hex] = result
+            cache[cid] = result
             return result
         } catch {
             return BreachResult(status: .unknown)
