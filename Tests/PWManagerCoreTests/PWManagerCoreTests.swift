@@ -702,3 +702,274 @@ struct TOTPGeneratorTests {
         #expect(code1 == code3)
     }
 }
+
+// MARK: - Exploit Tests
+
+@Suite("Exploit Tests", .serialized)
+struct ExploitTests {
+    func makeTestEnv() -> (url: URL, keychain: KeychainManager) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("exploit-vault-\(UUID().uuidString).pwm")
+        let kc = KeychainManager(
+            service: "com.pwmanager.exploit.\(UUID().uuidString)",
+            account: "test-key"
+        )
+        return (url, kc)
+    }
+
+    func cleanup(url: URL, keychain: KeychainManager) {
+        try? FileManager.default.removeItem(at: url)
+        try? keychain.deleteDeviceKey()
+    }
+
+    // ATTACK 1: Vault file contains no plaintext
+    @Test func vaultFileFullyEncrypted() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        try m.addEntry(PasswordEntry(
+            siteName: "GitHub", username: "vasil", password: "super-secret-pw!",
+            url: "https://github.com", totpSecret: "JBSWY3DPEHPK3PXP"
+        ))
+
+        let raw = try String(data: Data(contentsOf: env.url), encoding: .utf8) ?? ""
+        #expect(!raw.contains("super-secret-pw!"))
+        #expect(!raw.contains("GitHub"))
+        #expect(!raw.contains("vasil"))
+        #expect(!raw.contains("JBSWY3DPEHPK3PXP"))
+    }
+
+    // ATTACK 2: Wrong password rejected
+    @Test func wrongPasswordRejected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "CorrectPassword!", kdfParams: .testing)
+        m.lock()
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "WrongPassword!")
+        }
+    }
+
+    // ATTACK 3: Tampered ciphertext detected
+    @Test func tamperedVaultDetected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        try m.addEntry(PasswordEntry(siteName: "Test", username: "u", password: "p"))
+        m.lock()
+
+        var data = try Data(contentsOf: env.url)
+        data[data.count / 2] ^= 0xFF
+        try data.write(to: env.url)
+
+        #expect(throws: (any Error).self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 4: Access while locked denied
+    @Test func lockedAccessDenied() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        #expect(throws: PasswordManagerError.self) { _ = try m.allEntries() }
+        #expect(throws: PasswordManagerError.self) {
+            try m.addEntry(PasswordEntry(siteName: "X", username: "X", password: "X"))
+        }
+        #expect(throws: PasswordManagerError.self) { try m.deleteEntry(id: UUID()) }
+        #expect(throws: PasswordManagerError.self) { _ = try m.searchEntries(query: "X") }
+    }
+
+    // ATTACK 5: KDF parameter downgrade rejected
+    @Test func kdfDowngradeRejected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        var raw = try Data(contentsOf: env.url)
+        var json = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        json["kdfMemory"] = 1
+        raw = try JSONSerialization.data(withJSONObject: json)
+        try raw.write(to: env.url)
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 6: HMAC tampering detected
+    @Test func hmacTamperingDetected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        let raw = try Data(contentsOf: env.url)
+        var json = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        let hmac = Data(base64Encoded: json["metadataHMAC"] as! String)!
+        var flipped = hmac; flipped[0] ^= 0xFF
+        json["metadataHMAC"] = flipped.base64EncodedString()
+        try JSONSerialization.data(withJSONObject: json).write(to: env.url)
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 7: Wrong device key rejected
+    @Test func wrongDeviceKeyRejected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        // Replace device key with a new one
+        try env.keychain.deleteDeviceKey()
+        _ = try env.keychain.generateAndStoreDeviceKey()
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 8: Short password rejected
+    @Test func shortPasswordRejectedOnCreate() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        #expect(throws: PasswordManagerError.self) {
+            try m.createVault(masterPassword: "short", kdfParams: .testing)
+        }
+    }
+
+    // ATTACK 9: File permissions are 0600
+    @Test func vaultFilePermissions() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: env.url.path)
+        #expect(attrs[.posixPermissions] as! Int == 0o600)
+    }
+
+    // ATTACK 10: SSH key data encrypted in vault
+    @Test func sshKeyEncryptedInVault() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+
+        let sshKey = Curve25519.Signing.PrivateKey()
+        try m.addEntry(PasswordEntry(
+            siteName: "SSHServer", username: "root", password: "pw",
+            sshKeyData: sshKey.rawRepresentation
+        ))
+
+        let raw = try String(data: Data(contentsOf: env.url), encoding: .utf8) ?? ""
+        let keyB64 = sshKey.rawRepresentation.base64EncodedString()
+        #expect(!raw.contains(keyB64))
+        #expect(!raw.contains("SSHServer"))
+        #expect(!raw.contains("root"))
+    }
+
+    // ATTACK 11: Version downgrade rejected
+    @Test func versionDowngradeRejected() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        let raw = try Data(contentsOf: env.url)
+        var json = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        json["version"] = 1
+        try JSONSerialization.data(withJSONObject: json).write(to: env.url)
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 12: Duplicate vault creation prevented
+    @Test func duplicateVaultPrevented() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.createVault(masterPassword: "AnotherPassword!", kdfParams: .testing)
+        }
+    }
+
+    // ATTACK 13: KDF parameter upper bound enforced
+    @Test func kdfUpperBoundEnforced() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+        m.lock()
+
+        let raw = try Data(contentsOf: env.url)
+        var json = try JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        json["kdfMemory"] = 999_999_999  // Absurd value
+        try JSONSerialization.data(withJSONObject: json).write(to: env.url)
+
+        #expect(throws: PasswordManagerError.self) {
+            try m.unlock(masterPassword: "TestPassword123!")
+        }
+    }
+
+    // ATTACK 14: Password history preserved on update
+    @Test func passwordHistoryPreserved() throws {
+        let env = makeTestEnv()
+        defer { cleanup(url: env.url, keychain: env.keychain) }
+
+        let m = PasswordManager(fileURL: env.url, keychain: env.keychain)
+        try m.createVault(masterPassword: "TestPassword123!", kdfParams: .testing)
+
+        var entry = PasswordEntry(siteName: "Test", username: "u", password: "original-pw")
+        try m.addEntry(entry)
+
+        entry.updatePassword("new-pw-1")
+        try m.updateEntry(entry)
+
+        entry = try m.getEntry(id: entry.id)
+        #expect(entry.password == "new-pw-1")
+        #expect(entry.history.count == 1)
+        #expect(entry.history[0].password == "original-pw")
+    }
+
+    // ATTACK 15: TOTP invalid secret handled safely
+    @Test func totpInvalidSecretSafe() {
+        #expect(TOTPGenerator.generateCode(secret: "") == nil)
+        #expect(TOTPGenerator.generateCode(secret: "!!!") == nil)
+        #expect(TOTPGenerator.generateCode(secret: "<script>alert(1)</script>") == nil)
+        #expect(TOTPGenerator.generateCode(secret: String(repeating: "A", count: 10000)) != nil)
+    }
+}
