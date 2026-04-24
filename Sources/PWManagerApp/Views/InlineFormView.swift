@@ -40,7 +40,7 @@ struct InlineFormView: View {
                 // Header
                 HStack {
                     Text(existing == nil ? "New Entry" : "Edit Entry")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Theme.text1)
                         .tracking(-0.3)
 
@@ -97,6 +97,7 @@ struct InlineFormView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                 }
                                 .buttonStyle(GhostButtonStyle())
+                                .help(showPassword ? "Hide password" : "Show password")
 
                                 Button {
                                     withAnimation(.spring(duration: 0.2)) {
@@ -111,6 +112,7 @@ struct InlineFormView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                 }
                                 .buttonStyle(GhostButtonStyle())
+                                .help("Password generator")
                             }
 
                             PasswordStrengthBar(password: password)
@@ -240,7 +242,10 @@ struct InlineFormView: View {
     // MARK: - Actions
 
     private func save() {
-        let cleanTOTP = totpSecret.isEmpty ? nil : totpSecret
+        let cleanTOTP: String? = {
+            guard !totpSecret.isEmpty else { return nil }
+            return TOTPGenerator.isValidSecret(totpSecret) ? totpSecret : nil
+        }()
         if var entry = existing {
             let oldPw = entry.password
             entry.siteName = siteName

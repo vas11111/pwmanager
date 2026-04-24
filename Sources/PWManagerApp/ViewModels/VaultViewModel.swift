@@ -322,6 +322,8 @@ final class VaultViewModel {
             if !PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
                 toastMessage = "Vault file was removed"
                 lock()
+            } else {
+                errorMessage = "Failed to read vault data."
             }
         }
     }

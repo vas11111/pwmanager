@@ -137,8 +137,8 @@ struct VaultContentView: View {
                 }
                 Spacer()
                 HStack(spacing: 4) {
-                    sidebarButton(icon: "plus") { openAddForm() }
-                    sidebarButton(icon: "lock.fill") { viewModel.lock() }
+                    sidebarButton(icon: "plus", help: "New entry (Cmd+N)") { openAddForm() }
+                    sidebarButton(icon: "lock.fill", help: "Lock vault (Cmd+L)") { viewModel.lock() }
                 }
             }
             .padding(.horizontal, 16)
@@ -222,8 +222,10 @@ struct VaultContentView: View {
         Group {
             if isAdding {
                 InlineFormView(viewModel: viewModel, existing: nil, onClose: closeForm)
+                    .id("add-\(UUID())")
             } else if let editing = editingEntry {
                 InlineFormView(viewModel: viewModel, existing: editing, onClose: closeForm)
+                    .id("edit-\(editing.id)")
             } else if let entry = viewModel.selectedEntry {
                 EntryDetailView(entry: entry, viewModel: viewModel, onEdit: { startEdit($0) })
                     .id(entry.id)
@@ -263,7 +265,7 @@ struct VaultContentView: View {
         }
     }
 
-    private func sidebarButton(icon: String, action: @escaping () -> Void) -> some View {
+    private func sidebarButton(icon: String, help: String = "", action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
@@ -273,6 +275,7 @@ struct VaultContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(GhostButtonStyle())
+        .help(help)
     }
 }
 

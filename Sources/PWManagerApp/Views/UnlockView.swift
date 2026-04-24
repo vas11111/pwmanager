@@ -67,7 +67,7 @@ struct UnlockView: View {
                                         .font(.system(size: 13, weight: .semibold))
                                 }
                             }
-                            .frame(width: canUseTouchID ? 210 : 260, height: 20)
+                            .frame(width: 210, height: 20)
                         }
                         .buttonStyle(.plain)
                         .padding(.vertical, 10)

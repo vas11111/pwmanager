@@ -91,7 +91,7 @@ struct SettingsView: View {
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
                         Spacer()
-                        Button("Copy Setup") {
+                        Button("Copy Setup Command") {
                             let cmd = "export SSH_AUTH_SOCK=\"$HOME/.pwmanager/agent.sock\""
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(cmd, forType: .string)

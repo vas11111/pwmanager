@@ -59,6 +59,7 @@ struct SSHKeyRow: View {
                         .foregroundStyle(Theme.accent)
                     }
                     .buttonStyle(.plain)
+                    .help("Generate a new Ed25519 SSH key pair")
 
                     Spacer()
                 }

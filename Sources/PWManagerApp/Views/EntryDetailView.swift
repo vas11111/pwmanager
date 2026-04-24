@@ -71,8 +71,8 @@ struct EntryDetailView: View {
             Spacer()
 
             HStack(spacing: 6) {
-                headerButton(icon: "pencil") { onEdit(entry) }
-                headerButton(icon: "trash") { showingDeleteConfirm = true }
+                headerButton(icon: "pencil", help: "Edit entry") { onEdit(entry) }
+                headerButton(icon: "trash", help: "Delete entry") { showingDeleteConfirm = true }
             }
         }
     }
@@ -119,7 +119,7 @@ struct EntryDetailView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text1)
                 .lineLimit(1)
-                .frame(height: 16, alignment: .leading)
+                .frame(minHeight: 16, alignment: .leading)
                 Spacer()
                 Button {
                     withAnimation(.spring(duration: 0.2)) { showPassword.toggle() }
@@ -130,6 +130,7 @@ struct EntryDetailView: View {
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(GhostButtonStyle())
+                .help(showPassword ? "Hide password" : "Show password")
                 copyButton(entry.password)
             }
             .padding(.vertical, 12)
@@ -197,7 +198,7 @@ struct EntryDetailView: View {
 
     // MARK: - Helpers
 
-    private func headerButton(icon: String, action: @escaping () -> Void) -> some View {
+    private func headerButton(icon: String, help: String = "", action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
@@ -207,6 +208,7 @@ struct EntryDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(GhostButtonStyle())
+        .help(help)
     }
 
     private func copyButton(_ value: String) -> some View {

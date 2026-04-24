@@ -31,7 +31,7 @@ struct ChangePasswordView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Change Master Password")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -81,7 +81,7 @@ struct ChangePasswordView: View {
                         .foregroundStyle(feedback?.1 ?? .clear)
                         .frame(height: 14)
                 }
-                .padding(24)
+                .padding(32)
             }
 
             Divider().overlay(Theme.border)
