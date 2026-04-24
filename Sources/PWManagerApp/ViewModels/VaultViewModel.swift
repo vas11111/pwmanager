@@ -419,6 +419,11 @@ final class VaultViewModel {
         let keyData: Data
         let verb: String
         if let imported = importedKeyData {
+            guard imported.count == 32,
+                  (try? Curve25519.Signing.PrivateKey(rawRepresentation: imported)) != nil else {
+                errorMessage = "Invalid Ed25519 key data."
+                return
+            }
             keyData = imported
             verb = "imported"
         } else {

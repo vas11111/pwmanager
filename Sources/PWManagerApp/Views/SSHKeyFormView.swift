@@ -210,6 +210,7 @@ struct SSHKeyFormView: View {
                 importError = "Could not parse the private key."
                 return
             }
+            importText = ""
             viewModel.addSSHKey(
                 name: name, comment: comment,
                 notes: notes.isEmpty ? nil : notes,
@@ -263,9 +264,17 @@ struct SSHKeyFormView: View {
         let b64 = lines.joined()
         guard let blob = Data(base64Encoded: b64), blob.count > 100 else { return nil }
 
-        // The OpenSSH format embeds the key type, then key data.
-        // For Ed25519, the 32-byte private seed is followed by the 32-byte public key
-        // at a specific offset. Search for the "ssh-ed25519" marker.
+        // Reject passphrase-protected keys: the ciphername field at offset 15
+        // must be "none" (length-prefixed string). AUTH_MAGIC is "openssh-key-v1\0" = 15 bytes.
+        let noneMarker = Data("none".utf8)
+        let cipherOffset = 15 // after "openssh-key-v1\0"
+        guard cipherOffset + 4 <= blob.count else { return nil }
+        let cipherLen = Int(UInt32(blob[cipherOffset]) << 24 | UInt32(blob[cipherOffset+1]) << 16
+                           | UInt32(blob[cipherOffset+2]) << 8 | UInt32(blob[cipherOffset+3]))
+        guard cipherLen == 4, cipherOffset + 4 + cipherLen <= blob.count else { return nil }
+        let cipherName = blob[(cipherOffset + 4)..<(cipherOffset + 4 + cipherLen)]
+        guard cipherName == noneMarker else { return nil }
+
         let marker = Data("ssh-ed25519".utf8)
         guard let range = blob.range(of: marker) else { return nil }
 
