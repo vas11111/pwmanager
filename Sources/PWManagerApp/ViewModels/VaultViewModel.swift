@@ -250,27 +250,34 @@ final class VaultViewModel {
     }
 
     func selectNext() {
-        let list = filteredEntries
-        guard !list.isEmpty else { return }
+        let ids = currentSectionIDs
+        guard !ids.isEmpty else { return }
         guard let current = selectedItemID,
-              let idx = list.firstIndex(where: { $0.id == current }),
-              idx + 1 < list.count else {
-            selectedItemID = list.first?.id
+              let idx = ids.firstIndex(of: current),
+              idx + 1 < ids.count else {
+            selectedItemID = ids.first
             return
         }
-        selectedItemID = list[idx + 1].id
+        selectedItemID = ids[idx + 1]
     }
 
     func selectPrevious() {
-        let list = filteredEntries
-        guard !list.isEmpty else { return }
+        let ids = currentSectionIDs
+        guard !ids.isEmpty else { return }
         guard let current = selectedItemID,
-              let idx = list.firstIndex(where: { $0.id == current }),
+              let idx = ids.firstIndex(of: current),
               idx > 0 else {
-            selectedItemID = list.last?.id
+            selectedItemID = ids.last
             return
         }
-        selectedItemID = list[idx - 1].id
+        selectedItemID = ids[idx - 1]
+    }
+
+    private var currentSectionIDs: [UUID] {
+        switch selectedSection {
+        case .logins: return filteredEntries.map(\.id)
+        case .sshKeys: return filteredSSHKeys.map(\.id)
+        }
     }
 
     // MARK: - Entry Management
