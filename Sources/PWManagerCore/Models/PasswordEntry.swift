@@ -20,6 +20,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
     public var url: String?
     public var notes: String?
     public var totpSecret: String?
+    public var sshKeyData: Data?
     public var history: [HistoryRecord]
     public let createdAt: Date
     public var modifiedAt: Date
@@ -32,6 +33,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
         url: String? = nil,
         notes: String? = nil,
         totpSecret: String? = nil,
+        sshKeyData: Data? = nil,
         history: [HistoryRecord] = [],
         createdAt: Date = Date(),
         modifiedAt: Date = Date()
@@ -43,6 +45,7 @@ public struct PasswordEntry: Codable, Identifiable, Sendable, Equatable {
         self.url = url
         self.notes = notes
         self.totpSecret = totpSecret
+        self.sshKeyData = sshKeyData
         self.history = history
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt

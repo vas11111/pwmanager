@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CryptoKit
 import PWManagerCore
 
 private struct Unsendable<T>: @unchecked Sendable { let value: T }
@@ -26,7 +27,9 @@ final class VaultViewModel {
     let biometricService = BiometricService()
     let autoLockService = AutoLockService()
     let breachChecker = BreachChecker()
+    let sshAgent = SSHAgentServer()
     private(set) var breachResults: [UUID: BreachResult] = [:]
+    private(set) var sshAgentRunning = false
 
     nonisolated(unsafe) private let manager: PasswordManager
     private var inflightTask: Task<Void, Never>?
@@ -117,6 +120,7 @@ final class VaultViewModel {
                     self.autoLockService.start()
                     self.offerTouchID(password: password)
                     self.checkBreaches()
+                    self.startSSHAgent()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -156,6 +160,7 @@ final class VaultViewModel {
                     self.autoLockService.start()
                     self.offerTouchID(password: password)
                     self.checkBreaches()
+                    self.startSSHAgent()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -203,6 +208,8 @@ final class VaultViewModel {
         inflightTask = nil
         isProcessing = false
         autoLockService.stop()
+        sshAgent.stop()
+        sshAgentRunning = false
         manager.lock()
         entries = []
         breachResults = [:]
@@ -339,6 +346,58 @@ final class VaultViewModel {
             await MainActor.run {
                 breachResults[entry.id] = result
             }
+        }
+    }
+
+    // MARK: - SSH Agent
+
+    private func startSSHAgent() {
+        sshAgent.keyProvider = { [weak self] in
+            guard let self, self.state == .unlocked else { return [] }
+            return self.entries.compactMap { entry in
+                guard let seed = entry.sshKeyData else { return nil }
+                return SSHKey(seed: seed, comment: entry.siteName, entryID: entry.id)
+            }
+        }
+        sshAgent.onSignRequest = { [weak self] key, _ in
+            Task { @MainActor in
+                self?.toastMessage = "SSH signed: \(key.comment)"
+            }
+        }
+        do {
+            try sshAgent.start()
+            sshAgentRunning = true
+        } catch {
+            sshAgentRunning = false
+        }
+    }
+
+    func generateSSHKey(for entry: PasswordEntry) {
+        guard state == .unlocked else { return }
+        let privateKey = Curve25519.Signing.PrivateKey()
+        var updated = entry
+        updated.sshKeyData = privateKey.rawRepresentation
+        updated.modifiedAt = Date()
+        do {
+            try manager.updateEntry(updated)
+            refreshEntries()
+            toastMessage = "SSH key generated"
+        } catch {
+            errorMessage = Self.friendlyError(error)
+        }
+    }
+
+    func removeSSHKey(for entry: PasswordEntry) {
+        guard state == .unlocked else { return }
+        var updated = entry
+        updated.sshKeyData = nil
+        updated.modifiedAt = Date()
+        do {
+            try manager.updateEntry(updated)
+            refreshEntries()
+            toastMessage = "SSH key removed"
+        } catch {
+            errorMessage = Self.friendlyError(error)
         }
     }
 

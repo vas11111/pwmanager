@@ -80,6 +80,27 @@ struct SettingsView: View {
 
     private var privacyTab: some View {
         Form {
+            Section("SSH Agent") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("The SSH agent serves Ed25519 keys from your vault when unlocked.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("~/.pwmanager/agent.sock")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("Copy Setup") {
+                            let cmd = "export SSH_AUTH_SOCK=\"$HOME/.pwmanager/agent.sock\""
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(cmd, forType: .string)
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+
             Section("Screen Capture") {
                 Toggle("Block screen recording & screenshots", isOn: $screenCaptureProtection)
                     .onChange(of: screenCaptureProtection) { _, _ in
