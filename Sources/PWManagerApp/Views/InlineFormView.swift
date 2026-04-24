@@ -32,7 +32,10 @@ struct InlineFormView: View {
         _totpSecret = State(initialValue: existing?.totpSecret ?? "")
     }
 
-    private var isValid: Bool { !siteName.isEmpty && !username.isEmpty && !password.isEmpty }
+    private var isValid: Bool {
+        !siteName.isEmpty && !username.isEmpty && !password.isEmpty
+            && (totpSecret.isEmpty || TOTPGenerator.isValidSecret(totpSecret))
+    }
 
     var body: some View {
         ScrollView {

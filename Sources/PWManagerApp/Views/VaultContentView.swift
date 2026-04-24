@@ -8,6 +8,7 @@ struct VaultContentView: View {
     @State private var editingSSHKey: SSHKeyEntry?
     @State private var isAddingLogin = false
     @State private var isAddingSSHKey = false
+    @State private var addFormSessionID = UUID()
     @State private var showDeleteConfirm = false
     @State private var pendingCloseAction: (() -> Void)?
     @State private var showUnsavedWarning = false
@@ -85,6 +86,7 @@ struct VaultContentView: View {
         let action = {
             withAnimation(.spring(duration: 0.25)) {
                 closeFormState()
+                addFormSessionID = UUID()
                 isAddingLogin = true
                 viewModel.selectedItemID = nil
                 viewModel.selectedSection = .logins
@@ -99,6 +101,7 @@ struct VaultContentView: View {
         let action = {
             withAnimation(.spring(duration: 0.25)) {
                 closeFormState()
+                addFormSessionID = UUID()
                 isAddingSSHKey = true
                 viewModel.selectedItemID = nil
                 viewModel.selectedSection = .sshKeys
@@ -329,13 +332,13 @@ struct VaultContentView: View {
         Group {
             if isAddingLogin {
                 InlineFormView(viewModel: viewModel, existing: nil, onClose: closeForm)
-                    .id("add-login-\(UUID())")
+                    .id("add-login-\(addFormSessionID)")
             } else if let editing = editingEntry {
                 InlineFormView(viewModel: viewModel, existing: editing, onClose: closeForm)
                     .id("edit-\(editing.id)")
             } else if isAddingSSHKey {
                 SSHKeyFormView(viewModel: viewModel, existing: nil, onClose: closeForm)
-                    .id("add-ssh-\(UUID())")
+                    .id("add-ssh-\(addFormSessionID)")
             } else if let editing = editingSSHKey {
                 SSHKeyFormView(viewModel: viewModel, existing: editing, onClose: closeForm)
                     .id("edit-ssh-\(editing.id)")
