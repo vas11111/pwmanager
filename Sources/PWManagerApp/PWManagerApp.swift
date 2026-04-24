@@ -10,6 +10,9 @@ struct PWManagerApp: App {
         WindowGroup {
             RootView(viewModel: viewModel)
                 .task { viewModel.checkVaultStatus() }
+                .onChange(of: viewModel.state == .unlocked) { _, unlocked in
+                    AppDelegate.resizeWindow(expanded: unlocked)
+                }
         }
         .commands {
             AppCommands(viewModel: viewModel)
@@ -31,8 +34,7 @@ struct PWManagerApp: App {
                 }
             }
         }
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 960, height: 620)
+        .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
 
         Settings {
@@ -55,6 +57,10 @@ private struct RecoveryKeyWrapper: Identifiable {
 struct RootView: View {
     let viewModel: VaultViewModel
 
+    private var isExpanded: Bool {
+        viewModel.state == .unlocked
+    }
+
     var body: some View {
         Group {
             switch viewModel.state {
@@ -68,10 +74,14 @@ struct RootView: View {
                 VaultContentView(viewModel: viewModel)
             }
         }
-        .frame(minWidth: 780, minHeight: 500)
+        .frame(
+            minWidth: isExpanded ? 780 : 420,
+            maxWidth: isExpanded ? .infinity : 420,
+            minHeight: isExpanded ? 500 : 580,
+            maxHeight: isExpanded ? .infinity : 580
+        )
         .background(Theme.bg)
         .preferredColorScheme(.dark)
-        .animation(.spring(duration: 0.35, bounce: 0.15), value: viewModel.state == .unlocked)
         .sheet(item: Binding(
             get: { viewModel.pendingRecoveryKey.map { RecoveryKeyWrapper(key: $0) } },
             set: { if $0 == nil { viewModel.pendingRecoveryKey = nil } }
@@ -87,6 +97,9 @@ struct RootView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @AppStorage("screenCaptureProtection") private var screenCaptureProtection = true
 
+    static let lockedSize = NSSize(width: 420, height: 580)
+    static let expandedSize = NSSize(width: 960, height: 620)
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -98,6 +111,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
             window.setFrameAutosaveName("PWManagerMain")
             applyScreenCaptureProtection(to: window)
+
+            // Start small for PIN entry
+            let size = Self.lockedSize
+            window.setContentSize(size)
+            window.center()
+        }
+    }
+
+    @MainActor static func resizeWindow(expanded: Bool) {
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+
+        let newSize = expanded ? expandedSize : lockedSize
+        let currentFrame = window.frame
+
+        // Calculate new frame centered horizontally from current position
+        let dx = (newSize.width - currentFrame.width) / 2
+        let dy = (newSize.height - currentFrame.height) / 2
+        let newFrame = NSRect(
+            x: currentFrame.origin.x - dx,
+            y: currentFrame.origin.y - dy,
+            width: newSize.width,
+            height: newSize.height
+        )
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.4
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(newFrame, display: true)
         }
     }
 
