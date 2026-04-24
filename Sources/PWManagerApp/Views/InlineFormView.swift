@@ -242,13 +242,14 @@ struct InlineFormView: View {
     private func save() {
         let cleanTOTP = totpSecret.isEmpty ? nil : totpSecret
         if var entry = existing {
+            let oldPw = entry.password
             entry.siteName = siteName
             entry.username = username
             entry.password = password
             entry.url = url.isEmpty ? nil : url
             entry.notes = notes.isEmpty ? nil : notes
             entry.totpSecret = cleanTOTP
-            viewModel.updateEntry(entry)
+            viewModel.updateEntry(entry, oldPassword: oldPw)
         } else {
             viewModel.addEntry(siteName: siteName, username: username, password: password, url: url, notes: notes, totpSecret: cleanTOTP)
         }

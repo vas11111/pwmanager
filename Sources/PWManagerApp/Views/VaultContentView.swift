@@ -155,7 +155,8 @@ struct VaultContentView: View {
                             SidebarRow(
                                 entry: entry,
                                 isSelected: viewModel.selectedEntryID == entry.id && !showingForm,
-                                isHovered: hovered == entry.id
+                                isHovered: hovered == entry.id,
+                                isBreached: viewModel.breachResults[entry.id]?.isBreached == true
                             )
                             .id(entry.id)
                             .onTapGesture {
@@ -273,6 +274,7 @@ private struct SidebarRow: View {
     let entry: PasswordEntry
     let isSelected: Bool
     let isHovered: Bool
+    var isBreached: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -288,6 +290,11 @@ private struct SidebarRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            if isBreached {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)

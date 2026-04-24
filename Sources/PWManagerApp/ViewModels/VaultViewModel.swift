@@ -25,6 +25,8 @@ final class VaultViewModel {
 
     let biometricService = BiometricService()
     let autoLockService = AutoLockService()
+    let breachChecker = BreachChecker()
+    private(set) var breachResults: [UUID: BreachResult] = [:]
 
     nonisolated(unsafe) private let manager: PasswordManager
     private var inflightTask: Task<Void, Never>?
@@ -114,6 +116,7 @@ final class VaultViewModel {
                     self.state = .unlocked
                     self.autoLockService.start()
                     self.offerTouchID(password: password)
+                    self.checkBreaches()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -152,6 +155,7 @@ final class VaultViewModel {
                     self.state = .unlocked
                     self.autoLockService.start()
                     self.offerTouchID(password: password)
+                    self.checkBreaches()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -201,6 +205,7 @@ final class VaultViewModel {
         autoLockService.stop()
         manager.lock()
         entries = []
+        breachResults = [:]
         selectedEntryID = nil
         searchText = ""
         errorMessage = nil
@@ -265,11 +270,15 @@ final class VaultViewModel {
         }
     }
 
-    func updateEntry(_ entry: PasswordEntry) {
+    func updateEntry(_ entry: PasswordEntry, oldPassword: String? = nil) {
         guard state == .unlocked else { return }
         var updated = entry
-        updated.modifiedAt = Date()
         updated.url = sanitizeURL(updated.url)
+        if let old = oldPassword, old != updated.password {
+            updated.updatePassword(updated.password)
+        } else {
+            updated.modifiedAt = Date()
+        }
         do {
             try manager.updateEntry(updated)
             refreshEntries()
@@ -304,6 +313,30 @@ final class VaultViewModel {
             if !PasswordManager.vaultExists(at: PasswordManager.defaultFileURL()) {
                 toastMessage = "Vault file was removed"
                 lock()
+            }
+        }
+    }
+
+    // MARK: - Breach Checking
+
+    func checkBreaches() {
+        guard state == .unlocked else { return }
+        let currentEntries = entries
+        Task {
+            for entry in currentEntries {
+                let result = await breachChecker.check(password: entry.password)
+                await MainActor.run {
+                    breachResults[entry.id] = result
+                }
+            }
+        }
+    }
+
+    func checkBreach(for entry: PasswordEntry) {
+        Task {
+            let result = await breachChecker.check(password: entry.password)
+            await MainActor.run {
+                breachResults[entry.id] = result
             }
         }
     }
