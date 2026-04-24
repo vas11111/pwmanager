@@ -414,12 +414,20 @@ final class VaultViewModel {
         sshAgent.updateKeys(keys)
     }
 
-    func addSSHKey(name: String, comment: String, notes: String?) {
+    func addSSHKey(name: String, comment: String, notes: String?, importedKeyData: Data? = nil) {
         guard state == .unlocked else { return }
-        let privateKey = Curve25519.Signing.PrivateKey()
+        let keyData: Data
+        let verb: String
+        if let imported = importedKeyData {
+            keyData = imported
+            verb = "imported"
+        } else {
+            keyData = Curve25519.Signing.PrivateKey().rawRepresentation
+            verb = "generated"
+        }
         let entry = SSHKeyEntry(
             name: name,
-            privateKeyData: privateKey.rawRepresentation,
+            privateKeyData: keyData,
             comment: comment.isEmpty ? name : comment,
             notes: notes?.isEmpty == true ? nil : notes
         )
@@ -428,7 +436,7 @@ final class VaultViewModel {
             refreshEntries()
             selectedItemID = entry.id
             selectedSection = .sshKeys
-            toastMessage = "SSH key generated"
+            toastMessage = "SSH key \(verb)"
         } catch {
             errorMessage = Self.friendlyError(error)
         }
