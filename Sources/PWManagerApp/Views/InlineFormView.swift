@@ -151,22 +151,21 @@ struct InlineFormView: View {
 
                 formRow(label: "Recovery") {
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Button {
-                                withAnimation(.spring(duration: 0.2)) {
-                                    showRecoveryCode.toggle()
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: showRecoveryCode ? "chevron.up" : "chevron.down")
-                                        .font(.system(size: 9, weight: .semibold))
-                                    Text(recoveryCode.isEmpty ? "Add recovery codes" : "Recovery codes")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundStyle(Theme.text2)
+                        Button {
+                            withAnimation(.spring(duration: 0.2)) {
+                                showRecoveryCode.toggle()
                             }
-                            .buttonStyle(.plain)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: showRecoveryCode ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 9, weight: .semibold))
+                                Text(recoveryCode.isEmpty ? "Add recovery codes" : "Recovery codes")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundStyle(Theme.text2)
                         }
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
 
                         if showRecoveryCode {
                             TextEditor(text: $recoveryCode)
@@ -174,7 +173,7 @@ struct InlineFormView: View {
                                 .foregroundStyle(Theme.text1)
                                 .scrollContentBackground(.hidden)
                                 .padding(8)
-                                .frame(height: 72)
+                                .frame(maxWidth: .infinity, minHeight: 72)
                                 .background(Theme.bgField)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
                                 .overlay(
@@ -184,6 +183,7 @@ struct InlineFormView: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 formRow(label: "Notes") {

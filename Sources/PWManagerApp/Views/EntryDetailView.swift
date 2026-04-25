@@ -182,13 +182,13 @@ struct EntryDetailView: View {
 
     private func recoveryCodeRow(_ code: String) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                Text("Recovery")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.text2)
-                    .frame(width: 80, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Recovery")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.text2)
+                        .frame(width: 80, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 4) {
                     Button {
                         withAnimation(.spring(duration: 0.2)) { showRecoveryCode.toggle() }
                     } label: {
@@ -202,20 +202,21 @@ struct EntryDetailView: View {
                     }
                     .buttonStyle(.plain)
 
-                    if showRecoveryCode {
-                        Text(code)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Theme.text1)
-                            .textSelection(.enabled)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Theme.bgCard)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
-                    }
+                    Spacer()
+                    copyButton(code)
                 }
 
-                Spacer()
-                copyButton(code)
+                if showRecoveryCode {
+                    Text(code)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.text1)
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.rSm, style: .continuous))
+                        .padding(.leading, 80)
+                }
             }
             .padding(.vertical, 12)
             Divider().overlay(Theme.border)
