@@ -99,13 +99,23 @@ Then generate an Ed25519 key on any entry in the app, copy the public key to you
 
 | Package | Version | Source | Audit |
 |---|---|---|---|
-| Argon2 (C) | `f57e61e` | phc-winner-argon2 | No backdoors, matches upstream byte-for-byte |
-| SwiftKyber | 3.5.0 | leif-ibsen | FIPS 203 compliant, NTT zetas verified, no kleptographic channels |
-| Digest | 1.13.0 | leif-ibsen | Keccak constants match FIPS 202 |
-| BigInt | 1.23.0 | leif-ibsen | Pure math, no I/O |
-| ASN1 | 2.7.0 | leif-ibsen | Pure parsing, no I/O |
+| Argon2 (C) | `f57e61e` | [P-H-C/phc-winner-argon2](https://github.com/P-H-C/phc-winner-argon2) | No backdoors, matches upstream byte-for-byte |
+| SwiftKyber | 3.5.0 | [leif-ibsen/SwiftKyber](https://github.com/leif-ibsen/SwiftKyber) | FIPS 203 compliant, NTT zetas verified, no kleptographic channels |
+| Digest | 1.13.0 | [leif-ibsen/Digest](https://github.com/leif-ibsen/Digest) | Keccak constants match FIPS 202 |
+| BigInt | 1.23.0 | [leif-ibsen/BigInt](https://github.com/leif-ibsen/BigInt) | Pure math, no I/O |
+| ASN1 | 2.7.0 | [leif-ibsen/ASN1](https://github.com/leif-ibsen/ASN1) | Pure parsing, no I/O |
 
 `Package.swift` has no `.package(url:)` declarations. `swift build` fetches nothing from the network.
+
+## Credits
+
+PWManager exists thanks to the work of these authors:
+
+- **[Leif Ibsen](https://github.com/leif-ibsen)** — author of `SwiftKyber`, `Digest`, `BigInt`, and `ASN1`. Without his clean, no-dependency Swift implementations of post-quantum and arbitrary-precision crypto, this project would not have been feasible without pulling in much heavier dependencies. Each of his packages is provided under permissive licenses; please see the upstream repos for license details.
+- **[Password Hashing Competition](https://www.password-hashing.net/)** and the **Argon2 authors** — Alex Biryukov, Daniel Dinu, and Dmitry Khovratovich — whose [reference C implementation](https://github.com/P-H-C/phc-winner-argon2) is vendored as `Sources/CArgon2`. CC0 / Apache 2.0.
+- **Apple CryptoKit** — provides the AES-256-GCM, HKDF, HMAC, SHA-256, and Curve25519 (Ed25519) primitives.
+- **NIST FIPS 203** — the ML-KEM specification SwiftKyber implements.
+- **Have I Been Pwned** — the k-anonymity range API used for the optional password breach checker (only the first 5 chars of a SHA-1 hash leave the device).
 
 ## Security Testing
 
