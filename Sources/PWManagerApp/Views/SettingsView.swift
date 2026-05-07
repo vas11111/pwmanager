@@ -70,12 +70,15 @@ struct SettingsView: View {
             Section("Touch ID") {
                 if biometricService.isAvailable {
                     Toggle("Unlock with Touch ID", isOn: $touchIDEnabled)
-                        .annotation("Use biometric authentication instead of typing your master password.")
                         .onChange(of: touchIDEnabled) { _, newValue in
                             if !newValue {
                                 try? biometricService.deleteStoredPassword()
                             }
                         }
+
+                    Text("Stores your PIN in macOS Keychain so you can unlock with Touch ID. Convenience feature only — because this build is ad-hoc signed, the stored PIN is not biometric-gated by the Keychain itself. If your Mac is compromised at the user level (malware running as you), the stored PIN may be readable without Touch ID. Leave off if you don't fully trust this Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     if touchIDEnabled && biometricService.hasStoredPassword {
                         Button("Clear Stored Password") {
