@@ -2,6 +2,9 @@ import SwiftUI
 import AppKit
 import CryptoKit
 import PWManagerCore
+import os.log
+
+private let bioLog = Logger(subsystem: "com.pwmanager.app", category: "biometric")
 
 private struct Unsendable<T>: @unchecked Sendable { let value: T }
 
@@ -350,7 +353,10 @@ final class VaultViewModel {
 
     func unlockWithBiometrics() {
         guard state == .locked else { return }
-        guard biometricService.isAvailable, biometricService.hasStoredPassword else { return }
+        let avail = biometricService.isAvailable
+        let stored = biometricService.hasStoredPassword
+        bioLog.info("unlockWithBiometrics: available=\(avail, privacy: .public) hasStoredPassword=\(stored, privacy: .public)")
+        guard avail, stored else { return }
         guard !isProcessing else { return }
         errorMessage = nil
         isProcessing = true
@@ -704,8 +710,19 @@ final class VaultViewModel {
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     private func offerTouchID(password: String) {
-        guard touchIDEnabled, biometricService.isAvailable else { return }
-        try? biometricService.storePassword(password)
+        guard touchIDEnabled else { return }
+        // Don't call checkAvailability here — the biometric subsystem briefly
+        // returns biometryLockout right after a successful authentication, and
+        // calling it would cause us to skip storing. The Keychain item itself
+        // has no biometric access control flags now (gating is done via an
+        // explicit LAContext.evaluatePolicy in retrievePassword), so storing
+        // succeeds regardless of the temporary biometry state.
+        do {
+            try biometricService.storePassword(password)
+            bioLog.info("offerTouchID stored password successfully")
+        } catch {
+            bioLog.error("offerTouchID storePassword failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     // MARK: - URL Validation

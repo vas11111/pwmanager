@@ -21,8 +21,9 @@ bundle: build
 	@mkdir -p $(BUNDLE)/Contents/Resources
 	@cp $(BINARY) $(BUNDLE)/Contents/MacOS/PWManagerApp
 	@cp Sources/PWManagerApp/Info.plist $(BUNDLE)/Contents/
-	@echo "Signing with entitlements..."
-	@codesign --force --sign - --entitlements entitlements.plist $(BUNDLE)/Contents/MacOS/PWManagerApp
+	@echo "Signing with entitlements (hardened runtime)..."
+	@codesign --force --sign - --options runtime --entitlements entitlements.plist --timestamp=none $(BUNDLE)/Contents/MacOS/PWManagerApp
+	@codesign --force --sign - --options runtime --entitlements entitlements.plist --timestamp=none $(BUNDLE)
 	@echo "$(BUNDLE) created successfully"
 
 # Build, bundle, and run

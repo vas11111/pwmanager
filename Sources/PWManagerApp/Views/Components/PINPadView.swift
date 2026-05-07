@@ -4,13 +4,15 @@ struct PINPadView: View {
     @Binding var pin: String
     let maxDigits: Int
     var onComplete: ((String) -> Void)?
+    var showTouchID: Bool = false
+    var onTouchID: (() -> Void)? = nil
 
-    private let columns = Array(repeating: GridItem(.fixed(72), spacing: 12), count: 3)
+    private let columns = Array(repeating: GridItem(.fixed(72), spacing: 14), count: 3)
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 26) {
             // Dot display
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 ForEach(0..<maxDigits, id: \.self) { i in
                     Circle()
                         .fill(i < pin.count ? Theme.accent : Theme.bgField)
@@ -26,13 +28,23 @@ struct PINPadView: View {
             .frame(height: 20)
 
             // Number grid
-            LazyVGrid(columns: columns, spacing: 12) {
+            LazyVGrid(columns: columns, spacing: 14) {
                 ForEach(1...9, id: \.self) { digit in
                     pinButton("\(digit)") { appendDigit("\(digit)") }
                 }
 
-                // Bottom row: empty, 0, delete
-                Color.clear.frame(height: 52)
+                // Bottom row: Touch ID (or empty), 0, delete
+                if showTouchID, let onTouchID {
+                    Button(action: onTouchID) {
+                        Image(systemName: "touchid")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 56, height: 56)
+                    }
+                    .buttonStyle(GhostButtonStyle())
+                } else {
+                    Color.clear.frame(height: 56)
+                }
 
                 pinButton("0") { appendDigit("0") }
 
@@ -44,9 +56,9 @@ struct PINPadView: View {
                     }
                 } label: {
                     Image(systemName: "delete.backward")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 19, weight: .medium))
                         .foregroundStyle(Theme.text2)
-                        .frame(width: 52, height: 52)
+                        .frame(width: 56, height: 56)
                 }
                 .buttonStyle(GhostButtonStyle())
             }
@@ -58,7 +70,7 @@ struct PINPadView: View {
             Text(label)
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(Theme.text1)
-                .frame(width: 52, height: 52)
+                .frame(width: 56, height: 56)
                 .background(Theme.bgField)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Theme.border, lineWidth: 0.5))

@@ -9,9 +9,12 @@ struct UnlockView: View {
     @AppStorage("touchIDEnabled") private var touchIDEnabled = false
 
     private var canUseTouchID: Bool {
-        touchIDEnabled
-            && viewModel.biometricService.isAvailable
-            && viewModel.biometricService.hasStoredPassword
+        // Don't gate on biometricService.isAvailable — that flag is stale after
+        // recent biometric activity and would hide the button right after the
+        // user just used Touch ID. Show the button whenever a password is
+        // stored; the actual evaluatePolicy call inside retrievePassword will
+        // surface real biometric errors at click time.
+        touchIDEnabled && viewModel.biometricService.hasStoredPassword
     }
 
     var body: some View {
@@ -24,18 +27,40 @@ struct UnlockView: View {
                 .blur(radius: 120)
                 .offset(y: -40)
 
-            ThemeCard {
-                VStack(spacing: 24) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.04))
-                            .frame(width: 68, height: 68)
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(Theme.text2)
-                    }
+            VStack(spacing: 0) {
+                Spacer().frame(height: 10)
+                cardContent
+                Spacer().frame(height: 10)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .task {
+            // Refresh availability so the Touch ID button is correctly shown/hidden,
+            // but DO NOT auto-fire the biometric prompt — that risks burning through
+            // the system biometry lockout counter if the user steps away from the Mac.
+            viewModel.biometricService.checkAvailability()
+        }
+        .onChange(of: viewModel.state) { _, newState in
+            if newState == .unlocked { pin = "" }
+        }
+        .onChange(of: viewModel.errorMessage) { _, msg in
+            if msg != nil {
+                shakeError = true
+                pin = ""
+                Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    shakeError = false
+                }
+            }
+        }
+    }
 
-                    VStack(spacing: 6) {
+    private var cardContent: some View {
+        ThemeCard(padding: 20) {
+                VStack(spacing: 14) {
+                    Spacer(minLength: 0)
+
+                    VStack(spacing: 4) {
                         Text("Welcome Back")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.text1)
@@ -45,9 +70,13 @@ struct UnlockView: View {
                             .foregroundStyle(Theme.text2)
                     }
 
-                    PINPadView(pin: $pin, maxDigits: 6) { completed in
-                        viewModel.unlock(password: completed)
-                    }
+                    PINPadView(
+                        pin: $pin,
+                        maxDigits: 6,
+                        onComplete: { completed in viewModel.unlock(password: completed) },
+                        showTouchID: canUseTouchID,
+                        onTouchID: { viewModel.unlockWithBiometrics() }
+                    )
                     .shake(shakeError)
 
                     // Error / status area
@@ -69,35 +98,16 @@ struct UnlockView: View {
                     }
                     .frame(height: 16)
 
-                    if canUseTouchID {
-                        Button {
-                            viewModel.unlockWithBiometrics()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "touchid")
-                                    .font(.system(size: 18, weight: .medium))
-                                Text("Touch ID")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundStyle(Theme.accent)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
-                            .background(Theme.bgField)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.r, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Theme.r, style: .continuous)
-                                    .stroke(Theme.border, lineWidth: 0.5)
-                            )
+                    Group {
+                        if viewModel.remainingAttempts > 0 && viewModel.remainingAttempts < 10 {
+                            Text("\(viewModel.remainingAttempts) attempts remaining")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Theme.text3)
+                        } else {
+                            Color.clear
                         }
-                        .buttonStyle(GhostButtonStyle())
-                        .disabled(viewModel.isProcessing)
                     }
-
-                    if viewModel.remainingAttempts > 0 && viewModel.remainingAttempts < 10 {
-                        Text("\(viewModel.remainingAttempts) attempts remaining")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Theme.text3)
-                    }
+                    .frame(height: 14)
 
                     Button("Forgot PIN? Use Recovery Key") {
                         showRecovery = true
@@ -105,6 +115,8 @@ struct UnlockView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.text3)
                     .buttonStyle(.plain)
+
+                    Spacer(minLength: 0)
                 }
             }
             .sheet(isPresented: $showRecovery) {
@@ -112,24 +124,6 @@ struct UnlockView: View {
                     .preferredColorScheme(.dark)
             }
             .frame(width: 400)
-        }
-        .task {
-            if canUseTouchID && !viewModel.isProcessing {
-                viewModel.unlockWithBiometrics()
-            }
-        }
-        .onChange(of: viewModel.state) { _, newState in
-            if newState == .unlocked { pin = "" }
-        }
-        .onChange(of: viewModel.errorMessage) { _, msg in
-            if msg != nil {
-                shakeError = true
-                pin = ""
-                Task {
-                    try? await Task.sleep(for: .seconds(0.5))
-                    shakeError = false
-                }
-            }
-        }
+            .frame(maxHeight: .infinity)
     }
 }

@@ -23,18 +23,28 @@ struct CreateVaultView: View {
                 .blur(radius: 120)
                 .offset(y: -40)
 
-            ThemeCard {
-                VStack(spacing: 24) {
-                    ZStack {
-                        Circle()
-                            .fill(Theme.accentGlow)
-                            .frame(width: 68, height: 68)
-                        Image(systemName: "shield.checkered")
-                            .font(.system(size: 30, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                    }
+            VStack(spacing: 0) {
+                Spacer().frame(height: 10)
+                cardContent
+                Spacer().frame(height: 10)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .sheet(item: Binding(
+            get: { importBackupData.map { BackupDataWrapper(data: $0) } },
+            set: { if $0 == nil { importBackupData = nil } }
+        )) { wrapper in
+            ImportBackupView(viewModel: viewModel, backupData: wrapper.data)
+                .preferredColorScheme(.dark)
+        }
+    }
 
-                    VStack(spacing: 6) {
+    private var cardContent: some View {
+        ThemeCard(padding: 20) {
+                VStack(spacing: 14) {
+                    Spacer(minLength: 0)
+
+                    VStack(spacing: 4) {
                         Text(step == .setPin ? "Set Your PIN" : "Confirm Your PIN")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(Theme.text1)
@@ -77,17 +87,12 @@ struct CreateVaultView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.text3)
                     .buttonStyle(.plain)
+
+                    Spacer(minLength: 0)
                 }
             }
             .frame(width: 400)
-        }
-        .sheet(item: Binding(
-            get: { importBackupData.map { BackupDataWrapper(data: $0) } },
-            set: { if $0 == nil { importBackupData = nil } }
-        )) { wrapper in
-            ImportBackupView(viewModel: viewModel, backupData: wrapper.data)
-                .preferredColorScheme(.dark)
-        }
+            .frame(maxHeight: .infinity)
     }
 
     private func pickBackupFile() {

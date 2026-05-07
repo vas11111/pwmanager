@@ -10,9 +10,6 @@ struct PWManagerApp: App {
         WindowGroup {
             RootView(viewModel: viewModel)
                 .task { viewModel.checkVaultStatus() }
-                .onChange(of: viewModel.state == .unlocked) { _, unlocked in
-                    AppDelegate.resizeWindow(expanded: unlocked)
-                }
         }
         .commands {
             AppCommands(viewModel: viewModel)
@@ -82,8 +79,8 @@ struct RootView: View {
         .frame(
             minWidth: isExpanded ? 780 : 420,
             maxWidth: isExpanded ? .infinity : 420,
-            minHeight: isExpanded ? 500 : 580,
-            maxHeight: isExpanded ? .infinity : 580
+            minHeight: isExpanded ? 500 : 600,
+            maxHeight: isExpanded ? .infinity : 600
         )
         .background(Theme.bg)
         .preferredColorScheme(.dark)
@@ -112,7 +109,7 @@ struct RootView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @AppStorage("screenCaptureProtection") private var screenCaptureProtection = true
 
-    static let lockedSize = NSSize(width: 420, height: 580)
+    static let lockedSize = NSSize(width: 420, height: 600)
     static let expandedSize = NSSize(width: 960, height: 620)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -126,9 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
             window.setFrameAutosaveName("PWManagerMain")
             applyScreenCaptureProtection(to: window)
-
-            let size = Self.lockedSize
-            window.setContentSize(size)
+            window.collectionBehavior.insert([.fullScreenAuxiliary, .stationary])
+            window.standardWindowButton(.zoomButton)?.isEnabled = false
             window.center()
         }
 
@@ -146,24 +142,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor static func resizeWindow(expanded: Bool) {
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+        if expanded {
+            applyExpandedGeometry(window: window, animated: true)
+        } else {
+            applyLockedGeometry(window: window, animated: true)
+        }
+    }
 
-        let newSize = expanded ? expandedSize : lockedSize
+    @MainActor static func applyLockedGeometry(window: NSWindow, animated: Bool) {
+        // Make the window fixed-size at the locked dimensions. Removing
+        // .resizable from the styleMask prevents user drag-resize AND tiling
+        // managers from overriding. minSize == maxSize is also belt-and-suspenders.
+        let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: lockedSize)).size
+        window.styleMask.remove(.resizable)
+        window.minSize = frameSize
+        window.maxSize = frameSize
+        animateToFrame(window: window, size: frameSize, animated: animated)
+    }
+
+    @MainActor static func applyExpandedGeometry(window: NSWindow, animated: Bool) {
+        let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: expandedSize)).size
+        // Allow user to resize the unlocked window (within reasonable bounds).
+        window.minSize = NSSize(width: frameSize.width, height: frameSize.height)
+        window.maxSize = NSSize(width: 5000, height: frameSize.height)
+        window.styleMask.insert(.resizable)
+        animateToFrame(window: window, size: frameSize, animated: animated)
+    }
+
+    @MainActor private static func animateToFrame(window: NSWindow, size: NSSize, animated: Bool) {
         let currentFrame = window.frame
-
-        // Calculate new frame centered horizontally from current position
-        let dx = (newSize.width - currentFrame.width) / 2
-        let dy = (newSize.height - currentFrame.height) / 2
+        let dx = (size.width - currentFrame.width) / 2
+        let dy = (size.height - currentFrame.height) / 2
         let newFrame = NSRect(
             x: currentFrame.origin.x - dx,
             y: currentFrame.origin.y - dy,
-            width: newSize.width,
-            height: newSize.height
+            width: size.width,
+            height: size.height
         )
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().setFrame(newFrame, display: true)
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(newFrame, display: true)
+            }
+        } else {
+            window.setFrame(newFrame, display: true)
         }
     }
 

@@ -1,6 +1,9 @@
 @preconcurrency import Foundation
 import LocalAuthentication
 import Security
+import os.log
+
+private let bioLog = Logger(subsystem: "com.pwmanager.app", category: "biometric")
 
 @MainActor
 @Observable
@@ -17,6 +20,14 @@ final class BiometricService {
             .deviceOwnerAuthenticationWithBiometrics,
             error: &error
         )
+        if !isAvailable {
+            let code = error?.code ?? 0
+            let desc = error?.localizedDescription ?? "<no error>"
+            let biometryType = context.biometryType.rawValue
+            bioLog.error("Touch ID check failed: code=\(code) biometryType=\(biometryType) desc=\(desc)")
+        } else {
+            bioLog.info("Touch ID check passed: biometryType=\(context.biometryType.rawValue)")
+        }
     }
 
     var hasStoredPassword: Bool {
@@ -34,20 +45,17 @@ final class BiometricService {
 
         guard let data = password.data(using: .utf8) else { return }
 
-        let access = SecAccessControlCreateWithFlags(
-            nil,
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            .biometryCurrentSet,
-            nil
-        )
-
-        var query: [String: Any] = [
+        // Ad-hoc signed apps cannot create Keychain items with biometric access
+        // control flags (returns errSecMissingEntitlement = -34018). Instead we
+        // store the item plainly and gate retrieval with an explicit LAContext
+        // evaluatePolicy call — same UX, works without keychain-access-groups.
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: Self.account,
             kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
-        if let access { query[kSecAttrAccessControl as String] = access }
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
@@ -56,35 +64,33 @@ final class BiometricService {
     }
 
     func retrievePassword() async throws -> String {
+        // 1. Require Touch ID before reading the stored PIN.
         let context = LAContext()
-        context.localizedReason = "Unlock your vault"
+        do {
+            let ok = try await context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: "Unlock your vault"
+            )
+            guard ok else { throw BiometricError.cancelled }
+        } catch let err as LAError where err.code == .userCancel || err.code == .systemCancel || err.code == .appCancel {
+            throw BiometricError.cancelled
+        }
 
+        // 2. Fetch from Keychain.
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: Self.account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context,
         ]
-
-        let cfQuery = query as CFDictionary
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var result: AnyObject?
-                let status = SecItemCopyMatching(cfQuery, &result)
-
-                if status == errSecSuccess, let data = result as? Data,
-                   let password = String(data: data, encoding: .utf8)
-                {
-                    continuation.resume(returning: password)
-                } else if status == errSecUserCanceled || status == errSecAuthFailed {
-                    continuation.resume(throwing: BiometricError.cancelled)
-                } else {
-                    continuation.resume(throwing: BiometricError.retrieveFailed(status))
-                }
-            }
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data,
+              let password = String(data: data, encoding: .utf8) else {
+            throw BiometricError.retrieveFailed(status)
         }
+        return password
     }
 
     func deleteStoredPassword() throws {
