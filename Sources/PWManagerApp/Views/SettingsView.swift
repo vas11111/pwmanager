@@ -10,6 +10,7 @@ struct SettingsView: View {
 
     @State private var biometricService = BiometricService()
     @State private var showChangePassword = false
+    @State private var showExportBackup = false
 
     var body: some View {
         TabView {
@@ -34,6 +35,17 @@ struct SettingsView: View {
                     ChangePasswordView(viewModel: viewModel)
                         .preferredColorScheme(.dark)
                 }
+            }
+
+            Section("Backup") {
+                Button("Export Encrypted Backup...") {
+                    showExportBackup = true
+                }
+                .sheet(isPresented: $showExportBackup) {
+                    ExportBackupView(viewModel: viewModel)
+                        .preferredColorScheme(.dark)
+                }
+                .annotation("Save an encrypted copy of your vault that can be restored on another Mac using your recovery key.")
             }
 
             Section("Auto-Lock") {

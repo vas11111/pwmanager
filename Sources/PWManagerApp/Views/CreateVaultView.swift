@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct CreateVaultView: View {
     let viewModel: VaultViewModel
@@ -10,6 +11,7 @@ struct CreateVaultView: View {
     @State private var firstPin = ""
     @State private var shakeError = false
     @State private var errorText: String?
+    @State private var importBackupData: Data?
 
     var body: some View {
         ZStack {
@@ -68,9 +70,36 @@ struct CreateVaultView: View {
                         }
                     }
                     .frame(height: 16)
+
+                    Button("Restore from backup") {
+                        pickBackupFile()
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.text3)
+                    .buttonStyle(.plain)
                 }
             }
             .frame(width: 400)
+        }
+        .sheet(item: Binding(
+            get: { importBackupData.map { BackupDataWrapper(data: $0) } },
+            set: { if $0 == nil { importBackupData = nil } }
+        )) { wrapper in
+            ImportBackupView(viewModel: viewModel, backupData: wrapper.data)
+                .preferredColorScheme(.dark)
+        }
+    }
+
+    private func pickBackupFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.title = "Select Backup File"
+        panel.message = "Choose a .pwmbackup file to restore."
+        if panel.runModal() == .OK, let url = panel.url,
+           let data = try? Data(contentsOf: url) {
+            importBackupData = data
         }
     }
 
@@ -101,4 +130,9 @@ struct CreateVaultView: View {
             }
         }
     }
+}
+
+private struct BackupDataWrapper: Identifiable {
+    let id = UUID()
+    let data: Data
 }

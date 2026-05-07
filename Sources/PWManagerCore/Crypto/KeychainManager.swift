@@ -73,7 +73,7 @@ public struct KeychainManager: Sendable {
         (try? retrieveDeviceKey()) != nil
     }
 
-    func deleteDeviceKey() throws {
+    public func deleteDeviceKey() throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

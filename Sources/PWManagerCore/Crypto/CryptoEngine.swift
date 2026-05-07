@@ -90,6 +90,49 @@ struct CryptoEngine: Sendable {
         )
     }
 
+    // MARK: - Backup Key Derivation
+
+    static func deriveBackupKey(
+        quantumSecret: [UInt8]
+    ) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: quantumSecret),
+            info: Data("pwmanager-backup-key-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    static func computeBackupHMAC(
+        backupKey: SymmetricKey,
+        metadata: Data
+    ) -> Data {
+        let hmacKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: backupKey,
+            info: Data("pwmanager-backup-hmac-v1".utf8),
+            outputByteCount: 32
+        )
+        var hmac = HMAC<SHA256>(key: hmacKey)
+        hmac.update(data: metadata)
+        return Data(hmac.finalize())
+    }
+
+    static func verifyBackupHMAC(
+        backupKey: SymmetricKey,
+        metadata: Data,
+        expectedHMAC: Data
+    ) -> Bool {
+        let hmacKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: backupKey,
+            info: Data("pwmanager-backup-hmac-v1".utf8),
+            outputByteCount: 32
+        )
+        return HMAC<SHA256>.isValidAuthenticationCode(
+            expectedHMAC,
+            authenticating: metadata,
+            using: hmacKey
+        )
+    }
+
     // MARK: - Metadata HMAC
 
     static func computeMetadataHMAC(

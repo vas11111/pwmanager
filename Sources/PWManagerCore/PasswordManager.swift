@@ -13,6 +13,8 @@ public enum PasswordManagerError: Error, Sendable {
     case metadataTampered
     case deviceKeyMissing
     case weakKDFParams
+    case recoveryKeyNotConfigured
+    case unsupportedBackupVersion(Int)
 }
 
 public final class PasswordManager {
@@ -53,6 +55,20 @@ public final class PasswordManager {
         recoveryKey: RecoveryKey? = nil,
         kdfParams: KDFParams = .default
     ) throws {
+        try createVaultInternal(
+            masterPassword: masterPassword,
+            recoveryKey: recoveryKey,
+            initialData: VaultData.empty,
+            kdfParams: kdfParams
+        )
+    }
+
+    private func createVaultInternal(
+        masterPassword: String,
+        recoveryKey: RecoveryKey?,
+        initialData: VaultData,
+        kdfParams: KDFParams
+    ) throws {
         try stateLock.withLock {
             guard masterPassword.count >= KeyDerivation.minimumPasswordLength else {
                 throw PasswordManagerError.passwordTooShort(
@@ -83,8 +99,7 @@ public final class PasswordManager {
                     quantumSecret: encapResult.sharedSecret
                 )
 
-                let emptyVault = VaultData.empty
-                let encoded = try JSONEncoder().encode(emptyVault)
+                let encoded = try JSONEncoder().encode(initialData)
                 let encryptedEntries = try CryptoEngine.encrypt(encoded, using: derivedVaultKey)
                 let encryptedPrivateKey = try CryptoEngine.encrypt(
                     Data(keyPair.decapsulationKey.keyBytes), using: combinedKey
@@ -153,7 +168,7 @@ public final class PasswordManager {
 
                 try writeVaultFile(file)
 
-                self.vaultData = emptyVault
+                self.vaultData = initialData
                 self.vaultKey = derivedVaultKey
                 self.vaultFileMetadata = file
             } catch {
@@ -484,6 +499,168 @@ public final class PasswordManager {
             self.vaultKey = newVaultKey
             self.vaultFileMetadata = newFile
         }
+    }
+
+    // MARK: - Backup Export / Import
+
+    public func exportBackup(recoveryKey: RecoveryKey) throws -> Data {
+        try stateLock.withLock {
+            guard let data = vaultData else { throw PasswordManagerError.vaultLocked }
+
+            // Verify the recovery key against the existing vault's recovery slot
+            let file = try readVaultFile()
+            guard let rSalt = file.recoverySalt,
+                  let rMem = file.recoveryKdfMemory,
+                  let rIter = file.recoveryKdfIterations,
+                  let rPar = file.recoveryKdfParallelism,
+                  let encryptedRecoveryPriv = file.encryptedMLKEMPrivateKeyRecovery else {
+                throw PasswordManagerError.recoveryKeyNotConfigured
+            }
+            guard rMem >= KDFParams.minimumMemory, rMem <= KDFParams.maximumMemory,
+                  rIter >= KDFParams.minimumIterations, rIter <= KDFParams.maximumIterations,
+                  rPar >= KDFParams.minimumParallelism, rPar <= KDFParams.maximumParallelism else {
+                throw PasswordManagerError.weakKDFParams
+            }
+            let verifyParams = KDFParams(memory: rMem, iterations: rIter, parallelism: rPar)
+            let verifyMaster = try KeyDerivation.deriveKey(from: recoveryKey.raw, salt: rSalt, params: verifyParams)
+            let deviceKey = try keychain.retrieveDeviceKey()
+            let verifyCombined = CryptoEngine.combineMasterWithDeviceKey(masterKey: verifyMaster, deviceKey: deviceKey)
+            do {
+                _ = try CryptoEngine.decrypt(encryptedRecoveryPriv, using: verifyCombined)
+            } catch {
+                throw PasswordManagerError.incorrectPassword
+            }
+
+            // Build portable backup (no device key dependency)
+            let backupSalt = KeyDerivation.generateSalt()
+            let backupKdfParams = KDFParams.default
+            let backupRecoveryMaster = try KeyDerivation.deriveKey(
+                from: recoveryKey.raw, salt: backupSalt, params: backupKdfParams
+            )
+
+            let keyPair = CryptoEngine.generateMLKEMKeyPair()
+            let encapResult = CryptoEngine.encapsulate(publicKey: keyPair.encapsulationKey)
+            let backupKey = CryptoEngine.deriveBackupKey(quantumSecret: encapResult.sharedSecret)
+
+            let encodedEntries = try JSONEncoder().encode(data)
+            let encryptedEntries = try CryptoEngine.encrypt(encodedEntries, using: backupKey)
+            let encryptedMLKEMPriv = try CryptoEngine.encrypt(
+                Data(keyPair.decapsulationKey.keyBytes), using: backupRecoveryMaster
+            )
+
+            let createdAt = Date()
+            let metadata = BackupMetadata(
+                version: BackupFile.currentVersion,
+                createdAt: createdAt,
+                salt: backupSalt,
+                kdfMemory: backupKdfParams.memory,
+                kdfIterations: backupKdfParams.iterations,
+                kdfParallelism: backupKdfParams.parallelism,
+                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                mlkemCiphertext: Data(encapResult.ciphertext)
+            )
+            let hmac = CryptoEngine.computeBackupHMAC(
+                backupKey: backupKey, metadata: try metadata.canonicalBytes()
+            )
+
+            let backup = BackupFile(
+                version: BackupFile.currentVersion,
+                createdAt: createdAt,
+                salt: backupSalt,
+                kdfMemory: backupKdfParams.memory,
+                kdfIterations: backupKdfParams.iterations,
+                kdfParallelism: backupKdfParams.parallelism,
+                mlkemPublicKey: Data(keyPair.encapsulationKey.keyBytes),
+                mlkemCiphertext: Data(encapResult.ciphertext),
+                encryptedMLKEMPrivateKey: encryptedMLKEMPriv,
+                encryptedEntries: encryptedEntries,
+                metadataHMAC: hmac
+            )
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(backup)
+        }
+    }
+
+    public func restoreFromBackup(
+        backupData: Data,
+        backupRecoveryKey: String,
+        newPassword: String,
+        newRecoveryKey: RecoveryKey,
+        kdfParams: KDFParams = .default
+    ) throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let backup = try decoder.decode(BackupFile.self, from: backupData)
+
+        guard backup.version == BackupFile.currentVersion else {
+            throw PasswordManagerError.unsupportedBackupVersion(backup.version)
+        }
+
+        guard backup.kdfMemory >= KDFParams.minimumMemory,
+              backup.kdfMemory <= KDFParams.maximumMemory,
+              backup.kdfIterations >= KDFParams.minimumIterations,
+              backup.kdfIterations <= KDFParams.maximumIterations,
+              backup.kdfParallelism >= KDFParams.minimumParallelism,
+              backup.kdfParallelism <= KDFParams.maximumParallelism else {
+            throw PasswordManagerError.weakKDFParams
+        }
+        let backupKdfParams = KDFParams(
+            memory: backup.kdfMemory,
+            iterations: backup.kdfIterations,
+            parallelism: backup.kdfParallelism
+        )
+
+        let recoveryMaster = try KeyDerivation.deriveKey(
+            from: backupRecoveryKey, salt: backup.salt, params: backupKdfParams
+        )
+
+        // Decrypt ML-KEM private key — fails if recovery key is wrong
+        let mlkemPrivData: Data
+        do {
+            mlkemPrivData = try CryptoEngine.decrypt(
+                backup.encryptedMLKEMPrivateKey, using: recoveryMaster
+            )
+        } catch {
+            throw PasswordManagerError.incorrectPassword
+        }
+
+        let mlkemPriv = try DecapsulationKey(keyBytes: [UInt8](mlkemPrivData))
+
+        let sharedSecret: [UInt8]
+        do {
+            sharedSecret = try mlkemPriv.Decapsulate(ct: [UInt8](backup.mlkemCiphertext))
+        } catch {
+            throw PasswordManagerError.incorrectPassword
+        }
+
+        let backupKey = CryptoEngine.deriveBackupKey(quantumSecret: sharedSecret)
+
+        guard CryptoEngine.verifyBackupHMAC(
+            backupKey: backupKey,
+            metadata: try backup.metadata.canonicalBytes(),
+            expectedHMAC: backup.metadataHMAC
+        ) else {
+            throw PasswordManagerError.metadataTampered
+        }
+
+        let entriesData: Data
+        do {
+            entriesData = try CryptoEngine.decrypt(backup.encryptedEntries, using: backupKey)
+        } catch {
+            throw PasswordManagerError.incorrectPassword
+        }
+
+        let restored = try JSONDecoder().decode(VaultData.self, from: entriesData)
+
+        try createVaultInternal(
+            masterPassword: newPassword,
+            recoveryKey: newRecoveryKey,
+            initialData: restored,
+            kdfParams: kdfParams
+        )
     }
 
     public func lock() {

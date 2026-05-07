@@ -67,6 +67,11 @@ let package = Package(
             path: "Sources/PWManagerApp",
             exclude: ["Info.plist"]
         ),
+        .executableTarget(
+            name: "BackupVerifier",
+            dependencies: ["PWManagerCore"],
+            path: "Sources/BackupVerifier"
+        ),
         .testTarget(
             name: "PWManagerCoreTests",
             dependencies: ["PWManagerCore"],

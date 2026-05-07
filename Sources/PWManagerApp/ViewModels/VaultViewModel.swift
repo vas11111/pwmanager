@@ -407,6 +407,48 @@ final class VaultViewModel {
         return rk.formatted
     }
 
+    func exportBackup(recoveryKey: String) async throws -> Data {
+        guard state == .unlocked else { throw PasswordManagerError.vaultLocked }
+        let cleaned = RecoveryKey(raw: recoveryKey)
+        guard RecoveryKey.isValid(cleaned.raw) else {
+            throw PasswordManagerError.incorrectPassword
+        }
+        let box = Unsendable(value: manager)
+        return try await Task.detached {
+            try box.value.exportBackup(recoveryKey: cleaned)
+        }.value
+    }
+
+    func restoreFromBackup(
+        backupData: Data,
+        backupRecoveryKey: String,
+        newPin: String
+    ) async throws -> String {
+        guard state == .needsSetup else { throw PasswordManagerError.vaultAlreadyExists }
+        guard newPin.count >= 6 else { throw PasswordManagerError.passwordTooShort(minimum: 6) }
+        let cleanedRk = RecoveryKey(raw: backupRecoveryKey)
+        guard RecoveryKey.isValid(cleanedRk.raw) else {
+            throw PasswordManagerError.incorrectPassword
+        }
+        let newRk = RecoveryKey()
+        let box = Unsendable(value: manager)
+        try await Task.detached {
+            try box.value.restoreFromBackup(
+                backupData: backupData,
+                backupRecoveryKey: cleanedRk.raw,
+                newPassword: newPin,
+                newRecoveryKey: newRk
+            )
+        }.value
+        refreshEntries()
+        state = .unlocked
+        autoLockService.start()
+        offerTouchID(password: newPin)
+        checkBreaches()
+        startSSHAgent()
+        return newRk.formatted
+    }
+
     func copySelectedPassword() {
         guard state == .unlocked, let entry = selectedEntry else { return }
         copyToClipboard(entry.password)
@@ -698,6 +740,8 @@ final class VaultViewModel {
         case .entryNotFound: return "Entry not found."
         case .unsupportedVaultVersion: return "Unsupported vault format version."
         case .weakKDFParams: return "Vault has unsafe encryption parameters."
+        case .recoveryKeyNotConfigured: return "This vault has no recovery key configured."
+        case .unsupportedBackupVersion: return "Unsupported backup file version."
         }
     }
 }
