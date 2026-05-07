@@ -72,6 +72,11 @@ let package = Package(
             dependencies: ["PWManagerCore"],
             path: "Sources/BackupVerifier"
         ),
+        .executableTarget(
+            name: "PersistenceVerifier",
+            dependencies: ["PWManagerCore"],
+            path: "Sources/PersistenceVerifier"
+        ),
         .testTarget(
             name: "PWManagerCoreTests",
             dependencies: ["PWManagerCore"],
