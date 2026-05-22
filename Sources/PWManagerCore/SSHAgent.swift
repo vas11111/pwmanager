@@ -1,3 +1,5 @@
+#if os(macOS)
+
 import Foundation
 import CryptoKit
 
@@ -349,3 +351,5 @@ private struct DataReader {
         return Data(result)
     }
 }
+
+#endif // os(macOS)

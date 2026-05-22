@@ -177,8 +177,18 @@ struct ExportBackupSheet: View {
 
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
+    var onComplete: (() -> Void)? = nil
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        // Delete the temp backup file once the share sheet finishes (whether
+        // the user actually exported it or cancelled). The encrypted backup
+        // should not linger in /tmp where it'd be readable until iOS housekeeping.
+        vc.completionWithItemsHandler = { _, _, _, _ in
+            try? FileManager.default.removeItem(at: url)
+            onComplete?()
+        }
+        return vc
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

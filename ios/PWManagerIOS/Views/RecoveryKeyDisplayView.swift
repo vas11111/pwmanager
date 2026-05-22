@@ -31,7 +31,11 @@ struct RecoveryKeyDisplayView: View {
                     .padding(.horizontal, 24)
 
                 Button {
-                    UIPasteboard.general.string = recoveryKey
+                    // Recovery key is the most sensitive secret in the app — copy
+                    // with local-only + 30 s auto-expire to prevent Universal
+                    // Clipboard leakage and to clear it from the pasteboard
+                    // even if the app is killed.
+                    IOSVaultViewModel.secureCopy(recoveryKey, expireAfter: 30)
                     withAnimation(.spring(duration: 0.2)) { copied = true }
                     Task {
                         try? await Task.sleep(for: .seconds(1.5))

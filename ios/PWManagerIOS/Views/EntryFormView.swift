@@ -11,8 +11,11 @@ struct EntryFormView: View {
     @State private var password: String
     @State private var url: String
     @State private var notes: String
+    @State private var totpSecret: String
+    @State private var recoveryCode: String
     @State private var showPassword = false
     @State private var showGenerator = false
+    @State private var showRecovery = false
     @State private var genLength: Double = 24
     @State private var genLowercase = true
     @State private var genUppercase = true
@@ -30,10 +33,13 @@ struct EntryFormView: View {
         _password = State(initialValue: existing?.password ?? "")
         _url = State(initialValue: existing?.url ?? "")
         _notes = State(initialValue: existing?.notes ?? "")
+        _totpSecret = State(initialValue: existing?.totpSecret ?? "")
+        _recoveryCode = State(initialValue: existing?.recoveryCode ?? "")
     }
 
     private var isValid: Bool {
         !siteName.isEmpty && !username.isEmpty && !password.isEmpty
+            && (totpSecret.isEmpty || TOTPGenerator.isValidSecret(totpSecret))
     }
 
     var body: some View {
@@ -80,6 +86,40 @@ struct EntryFormView: View {
                     }
                     if showGenerator {
                         generatorSection
+                    }
+                }
+                Section("2FA (TOTP)") {
+                    TextField("TOTP secret (base32)", text: $totpSecret)
+                        .font(.system(.body, design: .monospaced))
+                        .autocapitalization(.allCharacters)
+                        .disableAutocorrection(true)
+                    if !totpSecret.isEmpty {
+                        if TOTPGenerator.isValidSecret(totpSecret) {
+                            Text("Valid secret — TOTP codes will appear in the entry detail view.")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        } else {
+                            Text("Invalid base32 secret")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+                Section("Recovery codes") {
+                    Button {
+                        withAnimation { showRecovery.toggle() }
+                    } label: {
+                        Label(
+                            recoveryCode.isEmpty ? "Add recovery codes" : "Edit recovery codes",
+                            systemImage: showRecovery ? "chevron.up" : "chevron.down"
+                        )
+                    }
+                    if showRecovery {
+                        TextField("One per line", text: $recoveryCode, axis: .vertical)
+                            .font(.system(.body, design: .monospaced))
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .lineLimit(3...10)
                     }
                 }
                 Section("Optional") {
@@ -169,6 +209,11 @@ struct EntryFormView: View {
     }
 
     private func save() {
+        let cleanTOTP: String? = {
+            guard !totpSecret.isEmpty else { return nil }
+            return TOTPGenerator.isValidSecret(totpSecret) ? totpSecret : nil
+        }()
+        let cleanRecovery: String? = recoveryCode.isEmpty ? nil : recoveryCode
         if var entry = existing {
             let oldPw = entry.password
             entry.siteName = siteName
@@ -176,11 +221,14 @@ struct EntryFormView: View {
             entry.password = password
             entry.url = url.isEmpty ? nil : url
             entry.notes = notes.isEmpty ? nil : notes
+            entry.totpSecret = cleanTOTP
+            entry.recoveryCode = cleanRecovery
             viewModel.updateEntry(entry, oldPassword: oldPw)
         } else {
             viewModel.addEntry(
                 siteName: siteName, username: username, password: password,
-                url: url, notes: notes
+                url: url, notes: notes,
+                totpSecret: cleanTOTP, recoveryCode: cleanRecovery
             )
         }
         dismiss()

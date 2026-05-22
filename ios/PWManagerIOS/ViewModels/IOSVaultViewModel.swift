@@ -78,6 +78,8 @@ final class IOSVaultViewModel {
     nonisolated(unsafe) private let manager: PasswordManager
     private var inflightTask: Task<Void, Never>?
     @ObservationIgnored private var rateLimits = RateLimitStore.load()
+    let breachChecker = BreachChecker()
+    private(set) var breachResults: [UUID: BreachResult] = [:]
 
     @ObservationIgnored
     @AppStorage("clipboardClearSecondsIOS") private var clipboardClearSeconds = 30
@@ -206,6 +208,7 @@ final class IOSVaultViewModel {
                     self.pendingRecoveryKey = recoveryKey.formatted
                     self.refreshEntries()
                     self.state = .unlocked
+                    self.checkBreaches()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -238,6 +241,7 @@ final class IOSVaultViewModel {
                     self.clearAttempts()
                     self.refreshEntries()
                     self.state = .unlocked
+                    self.checkBreaches()
                     if self.biometricEnabled {
                         self.storeBiometricPIN(password)
                     }
@@ -273,6 +277,7 @@ final class IOSVaultViewModel {
                     self.clearAttempts()
                     self.refreshEntries()
                     self.state = .unlocked
+                    self.checkBreaches()
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -326,11 +331,33 @@ final class IOSVaultViewModel {
         manager.lock()
         entries = []
         sshKeys = []
+        breachResults = [:]
+        Task { await breachChecker.clearCache() }
         pendingRecoveryKey = nil
         selectedItemID = nil
         searchText = ""
         errorMessage = nil
         state = .locked
+    }
+
+    // MARK: - Breach checking
+
+    func checkBreaches() {
+        guard state == .unlocked else { return }
+        let current = entries
+        Task {
+            for entry in current {
+                let result = await breachChecker.check(password: entry.password)
+                await MainActor.run { breachResults[entry.id] = result }
+            }
+        }
+    }
+
+    func checkBreach(for entry: PasswordEntry) {
+        Task {
+            let result = await breachChecker.check(password: entry.password)
+            await MainActor.run { breachResults[entry.id] = result }
+        }
     }
 
     // MARK: - Biometric PIN store
@@ -370,15 +397,25 @@ final class IOSVaultViewModel {
         }
     }
 
-    func addEntry(siteName: String, username: String, password: String, url: String?, notes: String?) {
+    func addEntry(
+        siteName: String, username: String, password: String,
+        url: String?, notes: String?,
+        totpSecret: String? = nil, recoveryCode: String? = nil
+    ) {
         guard state == .unlocked else { return }
         let entry = PasswordEntry(
             siteName: siteName, username: username, password: password,
             url: url?.isEmpty == true ? nil : url,
-            notes: notes?.isEmpty == true ? nil : notes
+            notes: notes?.isEmpty == true ? nil : notes,
+            totpSecret: totpSecret?.isEmpty == true ? nil : totpSecret,
+            recoveryCode: recoveryCode?.isEmpty == true ? nil : recoveryCode
         )
-        do { try manager.addEntry(entry); refreshEntries(); selectedItemID = entry.id }
-        catch { errorMessage = Self.friendlyError(error) }
+        do {
+            try manager.addEntry(entry)
+            refreshEntries()
+            selectedItemID = entry.id
+            checkBreach(for: entry)
+        } catch { errorMessage = Self.friendlyError(error) }
     }
 
     func updateEntry(_ entry: PasswordEntry, oldPassword: String? = nil) {
@@ -390,8 +427,11 @@ final class IOSVaultViewModel {
         } else {
             updated.modifiedAt = Date()
         }
-        do { try manager.updateEntry(updated); refreshEntries() }
-        catch { errorMessage = Self.friendlyError(error) }
+        do {
+            try manager.updateEntry(updated)
+            refreshEntries()
+            checkBreach(for: updated)
+        } catch { errorMessage = Self.friendlyError(error) }
     }
 
     func deleteEntry(id: UUID) {
@@ -407,15 +447,22 @@ final class IOSVaultViewModel {
 
     func copyToClipboard(_ value: String) {
         guard state == .unlocked else { return }
-        UIPasteboard.general.string = value
-        let changeCount = UIPasteboard.general.changeCount
+        Self.secureCopy(value, expireAfter: max(clipboardClearSeconds, 10))
         toastMessage = "Copied"
-        Task {
-            try? await Task.sleep(for: .seconds(max(clipboardClearSeconds, 10)))
-            if UIPasteboard.general.changeCount == changeCount {
-                UIPasteboard.general.items = []
-            }
-        }
+    }
+
+    /// Places a string on UIPasteboard with two privacy guarantees:
+    /// 1. `.localOnly: true`  — never synced to Universal Clipboard / iCloud / other Apple devices
+    /// 2. `.expirationDate`   — iOS auto-clears the clipboard at this time even if the app is killed
+    static func secureCopy(_ value: String, expireAfter seconds: Int) {
+        let expiry = Date().addingTimeInterval(TimeInterval(seconds))
+        UIPasteboard.general.setItems(
+            [[UIPasteboard.typeAutomatic: value]],
+            options: [
+                .localOnly: true,
+                .expirationDate: expiry,
+            ]
+        )
     }
 
     // MARK: - Backup

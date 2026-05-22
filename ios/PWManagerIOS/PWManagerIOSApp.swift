@@ -4,12 +4,22 @@ import PWManagerCore
 @main
 struct PWManagerIOSApp: App {
     @State private var viewModel = IOSVaultViewModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             RootView(viewModel: viewModel)
                 .task { viewModel.checkVaultStatus() }
                 .preferredColorScheme(.dark)
+                .onChange(of: scenePhase) { _, phase in
+                    // Lock the vault as soon as the app is backgrounded so
+                    // the App Switcher snapshot doesn't capture decrypted
+                    // entries and so a stolen unlocked phone doesn't grant
+                    // open-ended vault access.
+                    if phase == .background && viewModel.state == .unlocked {
+                        viewModel.lock()
+                    }
+                }
         }
     }
 }
