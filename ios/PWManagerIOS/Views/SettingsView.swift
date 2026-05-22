@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import LocalAuthentication
 import PWManagerCore
 
 struct SettingsView: View {
@@ -15,36 +14,9 @@ struct SettingsView: View {
     @State private var showICloudBrowser = false
     @State private var icloudSavedMessage: String?
 
-    private var biometryName: String {
-        switch viewModel.biometryType {
-        case .faceID: return "Face ID"
-        case .touchID: return "Touch ID"
-        default: return "Biometrics"
-        }
-    }
-
     var body: some View {
         NavigationStack {
             Form {
-                Section(biometryName) {
-                    let ctx = LAContext()
-                    if ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) {
-                        Toggle("Unlock with \(biometryName)", isOn: Binding(
-                            get: { viewModel.biometricIsEnabled },
-                            set: {
-                                viewModel.biometricIsEnabled = $0
-                                if !$0 { viewModel.clearStoredBiometricPIN() }
-                            }
-                        ))
-                        Text("Stores your PIN in the iOS Keychain so you can unlock with \(biometryName). The PIN is biometric-gated by iOS. Only the next time you unlock with PIN will the stored copy be refreshed.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.text3)
-                    } else {
-                        Text("\(biometryName) not available on this device.")
-                            .foregroundStyle(Theme.text3)
-                    }
-                }
-
                 Section("Backup") {
                     Button {
                         exportTarget = .iCloud

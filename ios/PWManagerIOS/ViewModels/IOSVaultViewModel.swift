@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import LocalAuthentication
 import Security
 import PWManagerCore
 
@@ -83,14 +82,10 @@ final class IOSVaultViewModel {
 
     @ObservationIgnored
     @AppStorage("clipboardClearSecondsIOS") private var clipboardClearSeconds = 30
-    @ObservationIgnored
-    @AppStorage("biometricEnabledIOS") private var biometricEnabled = false
 
     private static let attemptsPerHour = 3
     private static let maxTotalAttempts = 25
     private static let lockoutDuration: TimeInterval = 3600
-    private static let bioService = "com.pwmanager.ios.biometric"
-    private static let bioAccount = "stored-pin"
 
     init() {
         self.manager = PasswordManager(fileURL: Self.vaultURL())
@@ -117,35 +112,6 @@ final class IOSVaultViewModel {
     var selectedEntry: PasswordEntry? {
         guard let id = selectedItemID else { return nil }
         return entries.first { $0.id == id }
-    }
-
-    var hasStoredBiometricPIN: Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.bioService,
-            kSecAttrAccount as String: Self.bioAccount,
-            kSecReturnData as String: false,
-        ]
-        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
-    }
-
-    var biometricIsEnabled: Bool {
-        get { biometricEnabled }
-        set { biometricEnabled = newValue }
-    }
-
-    var canUseBiometric: Bool {
-        let ctx = LAContext()
-        var err: NSError?
-        return ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
-            && biometricEnabled
-            && hasStoredBiometricPIN
-    }
-
-    var biometryType: LABiometryType {
-        let ctx = LAContext()
-        _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        return ctx.biometryType
     }
 
     func checkVaultStatus() {
@@ -183,7 +149,6 @@ final class IOSVaultViewModel {
         selectedItemID = nil
         RateLimitStore.clear()
         rateLimits = RateLimitStore.AttemptData()
-        clearStoredBiometricPIN()
         errorMessage = nil
         state = .needsSetup
         toastMessage = "Vault destroyed after too many failed attempts"
@@ -242,9 +207,6 @@ final class IOSVaultViewModel {
                     self.refreshEntries()
                     self.state = .unlocked
                     self.checkBreaches()
-                    if self.biometricEnabled {
-                        self.storeBiometricPIN(password)
-                    }
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -289,41 +251,6 @@ final class IOSVaultViewModel {
         }
     }
 
-    func unlockWithBiometrics() {
-        guard state == .locked, canUseBiometric, !isProcessing else { return }
-        errorMessage = nil; isProcessing = true
-        Task {
-            do {
-                let ctx = LAContext()
-                let ok = try await ctx.evaluatePolicy(
-                    .deviceOwnerAuthenticationWithBiometrics,
-                    localizedReason: "Unlock your vault"
-                )
-                guard ok else { isProcessing = false; return }
-                let query: [String: Any] = [
-                    kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrService as String: Self.bioService,
-                    kSecAttrAccount as String: Self.bioAccount,
-                    kSecReturnData as String: true,
-                    kSecMatchLimit as String: kSecMatchLimitOne,
-                ]
-                var result: AnyObject?
-                let status = SecItemCopyMatching(query as CFDictionary, &result)
-                guard status == errSecSuccess, let data = result as? Data,
-                      let pin = String(data: data, encoding: .utf8) else {
-                    isProcessing = false
-                    errorMessage = "Couldn't read stored PIN."
-                    return
-                }
-                isProcessing = false
-                guard state == .locked else { return }
-                unlock(password: pin)
-            } catch {
-                isProcessing = false
-            }
-        }
-    }
-
     func lock() {
         inflightTask?.cancel()
         inflightTask = nil
@@ -358,30 +285,6 @@ final class IOSVaultViewModel {
             let result = await breachChecker.check(password: entry.password)
             await MainActor.run { breachResults[entry.id] = result }
         }
-    }
-
-    // MARK: - Biometric PIN store
-
-    func storeBiometricPIN(_ pin: String) {
-        clearStoredBiometricPIN()
-        guard let data = pin.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.bioService,
-            kSecAttrAccount as String: Self.bioAccount,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    func clearStoredBiometricPIN() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.bioService,
-            kSecAttrAccount as String: Self.bioAccount,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 
     // MARK: - Entries
@@ -497,20 +400,30 @@ final class IOSVaultViewModel {
     // MARK: - Errors
 
     private static func friendlyError(_ error: any Error) -> String {
-        guard let pwErr = error as? PasswordManagerError else { return "An unexpected error occurred." }
-        switch pwErr {
-        case .incorrectPassword: return "Incorrect PIN."
-        case .deviceKeyMissing: return "Device key missing. This vault belongs to another device."
-        case .passwordTooShort(let n): return "PIN must be at least \(n) digits."
-        case .vaultAlreadyExists: return "A vault already exists."
-        case .metadataTampered: return "Vault file is tampered."
-        case .vaultNotFound: return "No vault file found."
-        case .vaultLocked: return "Vault is locked."
-        case .entryNotFound: return "Entry not found."
-        case .unsupportedVaultVersion: return "Unsupported vault version."
-        case .weakKDFParams: return "Unsafe encryption parameters."
-        case .recoveryKeyNotConfigured: return "No recovery key configured."
-        case .unsupportedBackupVersion: return "Unsupported backup version."
+        if let pwErr = error as? PasswordManagerError {
+            switch pwErr {
+            case .incorrectPassword: return "Incorrect PIN."
+            case .deviceKeyMissing: return "Device key missing. This vault belongs to another device."
+            case .passwordTooShort(let n): return "PIN must be at least \(n) digits."
+            case .vaultAlreadyExists: return "A vault already exists."
+            case .metadataTampered: return "Vault file is tampered."
+            case .vaultNotFound: return "No vault file found."
+            case .vaultLocked: return "Vault is locked."
+            case .entryNotFound: return "Entry not found."
+            case .unsupportedVaultVersion: return "Unsupported vault version."
+            case .weakKDFParams: return "Unsafe encryption parameters."
+            case .recoveryKeyNotConfigured: return "No recovery key configured."
+            case .unsupportedBackupVersion: return "Unsupported backup version."
+            }
         }
+        if let kc = error as? KeychainError {
+            switch kc {
+            case .unableToStore(let s):    return "Keychain store failed (OSStatus \(s))."
+            case .unableToRetrieve(let s): return "Keychain read failed (OSStatus \(s))."
+            case .deviceKeyNotFound:       return "Device key not found in Keychain."
+            case .unableToDelete(let s):   return "Keychain delete failed (OSStatus \(s))."
+            }
+        }
+        return "Error: \(String(describing: error))"
     }
 }

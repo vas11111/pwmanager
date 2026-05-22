@@ -1,19 +1,10 @@
 import SwiftUI
-import LocalAuthentication
 import PWManagerCore
 
 struct UnlockView: View {
     @Bindable var viewModel: IOSVaultViewModel
     @State private var pin = ""
     @State private var showRecovery = false
-
-    private var biometricSymbol: String {
-        switch viewModel.biometryType {
-        case .faceID: return "faceid"
-        case .touchID: return "touchid"
-        default: return "lock"
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,10 +24,7 @@ struct UnlockView: View {
             PINPadView(
                 pin: $pin,
                 maxDigits: 6,
-                onComplete: { viewModel.unlock(password: $0) },
-                showBiometric: viewModel.canUseBiometric,
-                biometricSymbol: biometricSymbol,
-                onBiometric: { viewModel.unlockWithBiometrics() }
+                onComplete: { viewModel.unlock(password: $0) }
             )
 
             Group {

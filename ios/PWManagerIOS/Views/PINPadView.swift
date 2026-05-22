@@ -4,9 +4,6 @@ struct PINPadView: View {
     @Binding var pin: String
     let maxDigits: Int
     var onComplete: ((String) -> Void)?
-    var showBiometric: Bool = false
-    var biometricSymbol: String = "faceid"
-    var onBiometric: (() -> Void)? = nil
 
     private let columns = Array(repeating: GridItem(.fixed(72), spacing: 16), count: 3)
 
@@ -27,16 +24,7 @@ struct PINPadView: View {
             LazyVGrid(columns: columns, spacing: 14) {
                 ForEach(1...9, id: \.self) { d in pinButton("\(d)") { appendDigit("\(d)") } }
 
-                if showBiometric, let onBiometric {
-                    Button(action: onBiometric) {
-                        Image(systemName: biometricSymbol)
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                            .frame(width: 64, height: 64)
-                    }
-                } else {
-                    Color.clear.frame(height: 64)
-                }
+                Color.clear.frame(height: 64)
 
                 pinButton("0") { appendDigit("0") }
 

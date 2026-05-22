@@ -84,8 +84,59 @@ struct EntryFormView: View {
                     } label: {
                         Label(showGenerator ? "Hide generator" : "Generate password", systemImage: "wand.and.stars")
                     }
-                    if showGenerator {
-                        generatorSection
+                }
+                if showGenerator {
+                    Section("Generator") {
+                        HStack {
+                            Text("Length")
+                            Spacer()
+                            Text("\(Int(genLength))")
+                                .foregroundStyle(Theme.text2)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $genLength, in: 8...64, step: 1)
+                            .tint(Theme.accent)
+                        Toggle("Lowercase  a–z", isOn: $genLowercase)
+                        Toggle("Uppercase  A–Z", isOn: $genUppercase)
+                        Toggle("Digits  0–9", isOn: $genDigits)
+                        Toggle("Symbols", isOn: $genSymbols)
+                        if genSymbols {
+                            Toggle("Restrict symbol set", isOn: $genCustomSymbols)
+                            if genCustomSymbols {
+                                TextField("Allowed symbols", text: $genCustomSymbolSet)
+                                    .font(.system(.body, design: .monospaced))
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                                Text("Only these symbols will be used. Delete the ones the site doesn't allow.")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.text3)
+                            }
+                        }
+                    }
+                    Section {
+                        Button {
+                            password = generate()
+                            showPassword = true
+                            withAnimation { showGenerator = false }
+                        } label: {
+                            HStack {
+                                Image(systemName: "wand.and.stars")
+                                Text("Generate & Fill")
+                                Spacer()
+                            }
+                        }
+                        Button {
+                            let g = generate()
+                            password = g
+                            showPassword = true
+                            viewModel.copyToClipboard(g)
+                        } label: {
+                            HStack {
+                                Image(systemName: "doc.on.doc")
+                                Text("Generate & Copy")
+                                Spacer()
+                            }
+                        }
                     }
                 }
                 Section("2FA (TOTP)") {
@@ -145,51 +196,6 @@ struct EntryFormView: View {
         }
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
-    }
-
-    @ViewBuilder private var generatorSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Length: \(Int(genLength))").monospacedDigit().frame(width: 90, alignment: .leading)
-                Slider(value: $genLength, in: 8...64, step: 1).tint(Theme.accent)
-            }
-            Toggle("a–z", isOn: $genLowercase)
-            Toggle("A–Z", isOn: $genUppercase)
-            Toggle("0–9", isOn: $genDigits)
-            Toggle("Symbols", isOn: $genSymbols)
-            if genSymbols {
-                Toggle("Restrict symbol set", isOn: $genCustomSymbols)
-                if genCustomSymbols {
-                    TextField("Allowed symbols", text: $genCustomSymbolSet)
-                        .font(.system(.caption, design: .monospaced))
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    Text("Only these symbols will be used. Delete the ones the site doesn't allow.")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.text3)
-                }
-            }
-            HStack(spacing: 8) {
-                Button {
-                    password = generate()
-                    showGenerator = false
-                    showPassword = true
-                } label: {
-                    Text("Generate & Fill").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                Button {
-                    let g = generate()
-                    password = g
-                    showPassword = true
-                    viewModel.copyToClipboard(g)
-                } label: {
-                    Text("Generate & Copy").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(.vertical, 4)
     }
 
     private func generate() -> String {

@@ -78,17 +78,21 @@ struct CreateVaultView: View {
         }
         .fileImporter(
             isPresented: $showImporter,
-            allowedContentTypes: [.data, UTType(filenameExtension: "pwmbackup") ?? .data],
+            allowedContentTypes: [UTType(filenameExtension: "pwmbackup") ?? .data],
             allowsMultipleSelection: false
         ) { result in
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    _ = url.startAccessingSecurityScopedResource()
+                    // Only call stopAccessingSecurityScopedResource if start
+                    // actually returned true; the system can return false (we
+                    // don't own the scope) and stopping in that case is
+                    // undefined behaviour that can break later access.
+                    let needsScope = url.startAccessingSecurityScopedResource()
+                    defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
                     if let data = try? Data(contentsOf: url) {
                         importedBackup = data
                     }
-                    url.stopAccessingSecurityScopedResource()
                 }
             case .failure: break
             }

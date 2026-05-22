@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import PWManagerCore
 
 /// Presented from either Settings (export) or CreateVault (restore).
@@ -17,6 +18,7 @@ struct ICloudBackupsView: View {
     @State private var selectedBackup: ICloudBackupStore.BackupFile?
     @State private var importingData: Data?
     @State private var errorText: String?
+    @State private var showBrowseFiles = false
 
     var body: some View {
         NavigationStack {
@@ -35,6 +37,14 @@ struct ICloudBackupsView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                }
+                if mode == .restore {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showBrowseFiles = true } label: {
+                            Image(systemName: "folder")
+                        }
+                        .help("Pick a file from anywhere in iCloud Drive or Files")
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { store.refresh() } label: {
@@ -56,6 +66,21 @@ struct ICloudBackupsView: View {
                 set: { if $0 == nil { importingData = nil } }
             )) { blob in
                 ImportBackupFlow(viewModel: viewModel, backupData: blob.data)
+            }
+            .fileImporter(
+                isPresented: $showBrowseFiles,
+                allowedContentTypes: [UTType(filenameExtension: "pwmbackup") ?? .data],
+                allowsMultipleSelection: false
+            ) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    let needsScope = url.startAccessingSecurityScopedResource()
+                    defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
+                    if let data = try? Data(contentsOf: url) {
+                        importingData = data
+                    } else {
+                        errorText = "Couldn't read selected file."
+                    }
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -85,15 +110,36 @@ struct ICloudBackupsView: View {
             Image(systemName: "icloud")
                 .font(.system(size: 44))
                 .foregroundStyle(Theme.text3)
-            Text("No backups in iCloud yet")
+            Text("No backups in PWManager folder yet")
                 .font(.system(size: 17, weight: .semibold))
-            Text(mode == .restore
-                 ? "Export a backup from another device or drop a .pwmbackup file into the PWManager folder in iCloud Drive."
-                 : "Tap Export to create your first iCloud backup.")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.text2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+
+            if mode == .restore {
+                Text("PWManager looks for backups in its own iCloud Drive folder. If your backup is elsewhere in iCloud Drive (or in another location), tap below to browse and pick it.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                Button {
+                    showBrowseFiles = true
+                } label: {
+                    Label("Browse iCloud Drive…", systemImage: "folder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 4)
+            } else {
+                Text("Tap Export to create your first iCloud backup.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
             Spacer()
         }
         .padding(.top, 60)

@@ -23,15 +23,25 @@ targets:
       - path: PWManagerIOS
         excludes:
           - "Info.plist"
-    entitlements:
-      path: PWManagerIOS/PWManagerIOS.entitlements
-      properties:
-        com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.pwmanager.ios
-        com.apple.developer.icloud-services:
-          - CloudDocuments
-        com.apple.developer.ubiquity-container-identifiers:
-          - iCloud.com.pwmanager.ios
+    # Entitlements: only the application-identifier (required for Keychain
+    # access on iOS Simulator and device). NO iCloud entitlements here —
+    # those require a provisioned container which an unsigned simulator build
+    # or a free-Apple-ID build can't satisfy, and their presence causes iOS
+    # to refuse ALL Keychain access (errSecMissingEntitlement / -34018).
+    #
+    # To enable iCloud Drive integration later:
+    #   1. Open PWManagerIOS.xcodeproj in Xcode.
+    #   2. Select the PWManagerIOS target → Signing & Capabilities.
+    #   3. Set Team to your Apple ID.
+    #   4. + Capability → iCloud → tick "iCloud Documents" → keep the default
+    #      container (iCloud.com.pwmanager.ios). Xcode auto-provisions it.
+    # Until then, the app falls back to the system file picker which already
+    # surfaces iCloud Drive as a Files-app location.
+    # No explicit entitlements file — Xcode auto-manages everything from
+    # the Signing & Capabilities UI. To enable iCloud Drive container:
+    # open the project in Xcode → PWManagerIOS target → Signing &
+    # Capabilities → + Capability → iCloud → tick iCloud Documents.
+    # Xcode auto-provisions the container against your personal team.
     info:
       path: PWManagerIOS/Info.plist
       properties:
@@ -39,7 +49,6 @@ targets:
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true
-        NSFaceIDUsageDescription: Unlock your vault with Face ID.
         UIUserInterfaceStyle: Dark
         UILaunchScreen:
           UIColorName: ""
@@ -51,11 +60,6 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UIFileSharingEnabled: false
         LSSupportsOpeningDocumentsInPlace: false
-        NSUbiquitousContainers:
-          iCloud.com.pwmanager.ios:
-            NSUbiquitousContainerIsDocumentScopePublic: true
-            NSUbiquitousContainerSupportedFolderLevels: One
-            NSUbiquitousContainerName: PWManager
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.pwmanager.pwmbackup
             UTTypeDescription: PWManager Encrypted Backup
@@ -64,6 +68,8 @@ targets:
             UTTypeTagSpecification:
               public.filename-extension:
                 - pwmbackup
+        # NSUbiquitousContainers added automatically by Xcode when the
+        # iCloud capability is enabled.
     dependencies:
       - package: PWManagerCore
         product: PWManagerCore
@@ -76,5 +82,6 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         ENABLE_PREVIEWS: YES
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: RLRNT74K5X
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         GENERATE_INFOPLIST_FILE: NO
