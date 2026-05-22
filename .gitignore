@@ -11,3 +11,4 @@ DerivedData/
 Package.resolved
 PWManager.app/
 *.pwm
+*.pwmbackup
