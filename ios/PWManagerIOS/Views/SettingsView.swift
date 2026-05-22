@@ -6,9 +6,14 @@ import PWManagerCore
 struct SettingsView: View {
     @Bindable var viewModel: IOSVaultViewModel
     @Environment(\.dismiss) private var dismiss
+    enum ExportTarget { case iCloud, share }
+
     @State private var showExport = false
     @State private var exportedFileURL: URL?
     @State private var showShareSheet = false
+    @State private var exportTarget: ExportTarget = .iCloud
+    @State private var showICloudBrowser = false
+    @State private var icloudSavedMessage: String?
 
     private var biometryName: String {
         switch viewModel.biometryType {
@@ -42,12 +47,28 @@ struct SettingsView: View {
 
                 Section("Backup") {
                     Button {
+                        exportTarget = .iCloud
                         showExport = true
                     } label: {
-                        Label("Export Encrypted Backup", systemImage: "arrow.down.doc")
+                        Label("Export to iCloud Drive", systemImage: "icloud.and.arrow.up")
                     }
                     .disabled(viewModel.state != .unlocked)
-                    Text("Saves an encrypted backup decryptable on any device using your recovery key alone.")
+
+                    Button {
+                        exportTarget = .share
+                        showExport = true
+                    } label: {
+                        Label("Export via Share Sheet…", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(viewModel.state != .unlocked)
+
+                    Button {
+                        showICloudBrowser = true
+                    } label: {
+                        Label("Browse iCloud Backups", systemImage: "icloud")
+                    }
+
+                    Text("iCloud backups sync to all devices signed into your Apple ID. Decryptable on any device using your recovery key alone.")
                         .font(.caption)
                         .foregroundStyle(Theme.text3)
                 }
@@ -76,16 +97,32 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showExport) {
-                ExportBackupSheet(viewModel: viewModel) { url in
+                ExportBackupSheet(viewModel: viewModel, target: exportTarget) { url in
                     exportedFileURL = url
                     showExport = false
-                    showShareSheet = true
+                    switch exportTarget {
+                    case .iCloud:
+                        icloudSavedMessage = "Saved to iCloud Drive → PWManager."
+                    case .share:
+                        showShareSheet = true
+                    }
                 }
             }
             .sheet(isPresented: $showShareSheet) {
                 if let url = exportedFileURL {
                     ShareSheet(url: url)
                 }
+            }
+            .sheet(isPresented: $showICloudBrowser) {
+                ICloudBackupsView(viewModel: viewModel, mode: .manage)
+            }
+            .alert("Backup Saved", isPresented: Binding(
+                get: { icloudSavedMessage != nil },
+                set: { if !$0 { icloudSavedMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(icloudSavedMessage ?? "")
             }
         }
         .preferredColorScheme(.dark)
@@ -95,11 +132,13 @@ struct SettingsView: View {
 
 struct ExportBackupSheet: View {
     @Bindable var viewModel: IOSVaultViewModel
+    let target: SettingsView.ExportTarget
     let onExported: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var recovery = ""
     @State private var isExporting = false
     @State private var error: String?
+    @State private var icloudStore = ICloudBackupStore()
 
     var body: some View {
         NavigationStack {
@@ -157,11 +196,23 @@ struct ExportBackupSheet: View {
         do {
             let data = try await viewModel.exportBackup(recoveryKey: recovery)
             let df = DateFormatter()
-            df.dateFormat = "yyyy-MM-dd"
+            df.dateFormat = "yyyy-MM-dd-HHmmss"
             let name = "pwmanager-backup-\(df.string(from: Date())).pwmbackup"
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-            try data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            let url: URL
+            switch target {
+            case .iCloud:
+                icloudStore.refresh()
+                guard icloudStore.isAvailable else {
+                    isExporting = false
+                    error = "iCloud Drive is not available. Enable it in Settings → Apple ID → iCloud."
+                    return
+                }
+                url = try icloudStore.writeBackup(data: data, suggestedName: name)
+            case .share:
+                url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+                try data.write(to: url, options: .atomic)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            }
             isExporting = false
             onExported(url)
         } catch {
@@ -169,7 +220,7 @@ struct ExportBackupSheet: View {
             if case PasswordManagerError.incorrectPassword = error {
                 self.error = "Recovery key is incorrect."
             } else {
-                self.error = "Export failed."
+                self.error = "Export failed: \(error.localizedDescription)"
             }
         }
     }

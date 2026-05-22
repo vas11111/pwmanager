@@ -26,6 +26,18 @@
 	<false/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock your vault with Face ID.</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.pwmanager.ios</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>PWManager</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>One</string>
+		</dict>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

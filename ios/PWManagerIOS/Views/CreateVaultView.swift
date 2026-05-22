@@ -10,6 +10,7 @@ struct CreateVaultView: View {
     @State private var firstPin = ""
     @State private var errorText: String?
     @State private var showImporter = false
+    @State private var showICloudPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,14 +52,30 @@ struct CreateVaultView: View {
             .frame(height: 18)
             .padding(.top, 20)
 
-            Button("Restore from backup") { showImporter = true }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.text3)
-                .padding(.top, 8)
+            VStack(spacing: 12) {
+                Button { showICloudPicker = true } label: {
+                    Label("Restore from iCloud Drive", systemImage: "icloud.and.arrow.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Theme.bgField)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Theme.accent.opacity(0.4), lineWidth: 0.5))
+                }
+
+                Button("Pick file from another location…") { showImporter = true }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.text3)
+            }
+            .padding(.top, 16)
 
             Spacer()
         }
         .padding(.horizontal, 24)
+        .sheet(isPresented: $showICloudPicker) {
+            ICloudBackupsView(viewModel: viewModel, mode: .restore)
+        }
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.data, UTType(filenameExtension: "pwmbackup") ?? .data],
