@@ -21,6 +21,9 @@ struct InlineFormView: View {
     @State private var genUppercase = true
     @State private var genDigits = true
     @State private var genSymbols = true
+    @State private var genCustomSymbols = false
+    @State private var genCustomSymbolSet: String = PasswordGenerator.CharacterSet.defaultSymbols
+    @State private var copyJustHit = false
 
     init(viewModel: VaultViewModel, existing: PasswordEntry?, onClose: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -104,6 +107,26 @@ struct InlineFormView: View {
                                 }
                                 .buttonStyle(GhostButtonStyle())
                                 .help(showPassword ? "Hide password" : "Show password")
+
+                                Button {
+                                    guard !password.isEmpty else { return }
+                                    viewModel.copyToClipboard(password)
+                                    withAnimation(.spring(duration: 0.15)) { copyJustHit = true }
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(1.2))
+                                        withAnimation { copyJustHit = false }
+                                    }
+                                } label: {
+                                    Image(systemName: copyJustHit ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(copyJustHit ? .green : Theme.text3)
+                                        .frame(width: 30, height: 30)
+                                        .background(Theme.bgField)
+                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                }
+                                .buttonStyle(GhostButtonStyle())
+                                .disabled(password.isEmpty)
+                                .help("Copy password to clipboard")
 
                                 Button {
                                     withAnimation(.spring(duration: 0.2)) {
@@ -256,26 +279,76 @@ struct InlineFormView: View {
                 Toggle("a-z", isOn: $genLowercase)
                 Toggle("A-Z", isOn: $genUppercase)
                 Toggle("0-9", isOn: $genDigits)
-                Toggle("#$%", isOn: $genSymbols)
+                Toggle("Symbols", isOn: $genSymbols)
             }
             .toggleStyle(.checkbox)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(Theme.text2)
 
-            Button {
-                password = generatePassword()
-                showGenerator = false
-                showPassword = true
-            } label: {
-                Text("Generate & Fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            if genSymbols {
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Restrict symbol set (for picky sites)", isOn: $genCustomSymbols)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.text2)
+
+                    if genCustomSymbols {
+                        TextField("Allowed symbols", text: $genCustomSymbolSet)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.text1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(Theme.bgField)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .stroke(Theme.border, lineWidth: 0.5)
+                            )
+                        Text("Only these symbols will be used. Delete the ones the site doesn't allow.")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.text3)
+                    }
+                }
             }
-            .buttonStyle(PressButtonStyle())
+
+            HStack(spacing: 6) {
+                Button {
+                    let generated = generatePassword()
+                    password = generated
+                    showGenerator = false
+                    showPassword = true
+                } label: {
+                    Text("Generate & Fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(Theme.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .buttonStyle(PressButtonStyle())
+
+                Button {
+                    let generated = generatePassword()
+                    password = generated
+                    showPassword = true
+                    viewModel.copyToClipboard(generated)
+                } label: {
+                    Text("Generate & Copy")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(Theme.bgField)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .stroke(Theme.accent.opacity(0.4), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(PressButtonStyle())
+            }
         }
         .padding(12)
         .background(Theme.bgCard)
@@ -311,7 +384,13 @@ struct InlineFormView: View {
         if genLowercase { sets.append(.lowercase) }
         if genUppercase { sets.append(.uppercase) }
         if genDigits { sets.append(.digits) }
-        if genSymbols { sets.append(.symbols) }
+        if genSymbols {
+            if genCustomSymbols && !genCustomSymbolSet.isEmpty {
+                sets.append(.customSymbols(genCustomSymbolSet))
+            } else {
+                sets.append(.symbols)
+            }
+        }
         if sets.isEmpty { sets = [.lowercase, .uppercase, .digits] }
         return PasswordGenerator.generate(length: Int(genLength), using: sets)
     }

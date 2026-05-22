@@ -6,13 +6,20 @@ public struct PasswordGenerator: Sendable {
         case uppercase
         case digits
         case symbols
+        case customSymbols(String)
+
+        public static let defaultSymbols = "!@#$%^&*()-_=+[]{}|;:',.<>?/"
 
         var characters: String {
             switch self {
-            case .lowercase: "abcdefghijklmnopqrstuvwxyz"
-            case .uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            case .digits: "0123456789"
-            case .symbols: "!@#$%^&*()-_=+[]{}|;:',.<>?/"
+            case .lowercase: return "abcdefghijklmnopqrstuvwxyz"
+            case .uppercase: return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            case .digits: return "0123456789"
+            case .symbols: return Self.defaultSymbols
+            case .customSymbols(let s):
+                // De-duplicate while preserving order.
+                var seen = Set<Character>()
+                return s.filter { seen.insert($0).inserted }
             }
         }
     }
@@ -21,13 +28,16 @@ public struct PasswordGenerator: Sendable {
         length: Int = 24,
         using sets: [CharacterSet] = [.lowercase, .uppercase, .digits, .symbols]
     ) -> String {
-        let allChars = Array(sets.map(\.characters).joined())
+        // Drop any empty sets (e.g. customSymbols("")) so the guarantee loop
+        // doesn't try to pick from an empty alphabet.
+        let activeSets = sets.filter { !$0.characters.isEmpty }
+        let allChars = Array(activeSets.map(\.characters).joined())
         guard !allChars.isEmpty, length > 0 else { return "" }
 
         var result: [Character] = []
 
         // Guarantee at least one character from each set, up to the requested length
-        for set in sets.prefix(length) {
+        for set in activeSets.prefix(length) {
             let setChars = Array(set.characters)
             result.append(setChars[uniformRandomIndex(below: setChars.count)])
         }
