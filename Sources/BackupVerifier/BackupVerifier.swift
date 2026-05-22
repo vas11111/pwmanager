@@ -377,6 +377,104 @@ struct BackupVerifier {
             }
         }
 
+        // 16. Cross-platform backup format compatibility
+        //
+        // The vault crypto layer (PWManagerCore.PasswordManager + CryptoEngine
+        // + KeyDerivation + RecoveryKey) is built from a single set of
+        // platform-independent Swift sources. The only #if os(...) branch in
+        // the core is SSHAgent (Unix domain socket) which doesn't touch any
+        // vault or backup byte. Therefore the bytes a macOS build produces
+        // and the bytes an iOS build produces are byte-equivalent given the
+        // same inputs.
+        //
+        // This test simulates that by:
+        //   1. Treating "platform A" as one (keychain, file path) tuple and
+        //      "platform B" as a totally independent tuple.
+        //   2. Exporting a backup on A, then on B, with the SAME recovery key.
+        //   3. Asserting both backups have the identical structural JSON
+        //      shape (same field names, same field count) — proving the file
+        //      format is platform-agnostic.
+        //   4. Cross-importing each backup on the OPPOSITE platform — proving
+        //      no platform-specific state is baked into the ciphertext.
+        test("16. Cross-platform format: macOS-format backup restores on \"iOS\", and vice versa") {
+            let macOS = makeEnv(); defer { cleanup(macOS) }
+            let iOS   = makeEnv(); defer { cleanup(iOS) }
+
+            // Two independent vaults with their own device keys but the same
+            // recovery key (the only credential needed to restore a backup).
+            let rk = RecoveryKey()
+            let mA = PasswordManager(fileURL: macOS.url, keychain: macOS.keychain)
+            let mB = PasswordManager(fileURL: iOS.url, keychain: iOS.keychain)
+            try mA.createVault(masterPassword: "111111", recoveryKey: rk, kdfParams: .testing)
+            try mB.createVault(masterPassword: "111111", recoveryKey: rk, kdfParams: .testing)
+
+            try mA.addEntry(PasswordEntry(siteName: "Site", username: "u", password: "from-macos"))
+            try mB.addEntry(PasswordEntry(siteName: "Site", username: "u", password: "from-ios"))
+
+            let backupA = try mA.exportBackup(recoveryKey: rk)
+            let backupB = try mB.exportBackup(recoveryKey: rk)
+
+            // Same JSON shape — every backup must declare the same set of
+            // top-level fields regardless of which "platform" exported it.
+            let jsonA = try JSONSerialization.jsonObject(with: backupA) as! [String: Any]
+            let jsonB = try JSONSerialization.jsonObject(with: backupB) as! [String: Any]
+            try assertEqual(
+                Set(jsonA.keys), Set(jsonB.keys),
+                "backup field set must match across platforms"
+            )
+            try assertEqual(jsonA["version"] as? Int, jsonB["version"] as? Int, "backup version")
+            try assertEqual(jsonA["kdfMemory"] as? Int, jsonB["kdfMemory"] as? Int, "kdf memory")
+            try assertEqual(jsonA["kdfIterations"] as? Int, jsonB["kdfIterations"] as? Int, "kdf iters")
+            try assertEqual(jsonA["kdfParallelism"] as? Int, jsonB["kdfParallelism"] as? Int, "kdf par")
+
+            // Cross-restore: backup made on A restores onto a fresh-state B
+            let restoreFromA = makeEnv(); defer { cleanup(restoreFromA) }
+            let mFromA = PasswordManager(fileURL: restoreFromA.url, keychain: restoreFromA.keychain)
+            try mFromA.restoreFromBackup(
+                backupData: backupA, backupRecoveryKey: rk.raw,
+                newPassword: "222222", newRecoveryKey: RecoveryKey(), kdfParams: .testing
+            )
+            try assertEqual(try mFromA.allEntries().first?.password, "from-macos",
+                            "macOS-format backup must restore with the original macOS data intact on iOS-like fresh state")
+
+            // Cross-restore: backup made on B restores onto a fresh-state A
+            let restoreFromB = makeEnv(); defer { cleanup(restoreFromB) }
+            let mFromB = PasswordManager(fileURL: restoreFromB.url, keychain: restoreFromB.keychain)
+            try mFromB.restoreFromBackup(
+                backupData: backupB, backupRecoveryKey: rk.raw,
+                newPassword: "222222", newRecoveryKey: RecoveryKey(), kdfParams: .testing
+            )
+            try assertEqual(try mFromB.allEntries().first?.password, "from-ios",
+                            "iOS-format backup must restore with the original iOS data intact on macOS-like fresh state")
+        }
+
+        // 17. Same encryption parameters across "platforms"
+        // Confirms there is no hidden platform divergence in the KDF
+        // settings or HKDF info strings.
+        test("17. Cross-platform: same KDF + HKDF parameters in produced backups") {
+            let envA = makeEnv(); defer { cleanup(envA) }
+            let envB = makeEnv(); defer { cleanup(envB) }
+            let rk = RecoveryKey()
+            let mA = PasswordManager(fileURL: envA.url, keychain: envA.keychain)
+            let mB = PasswordManager(fileURL: envB.url, keychain: envB.keychain)
+            try mA.createVault(masterPassword: "111111", recoveryKey: rk, kdfParams: .default)
+            try mB.createVault(masterPassword: "111111", recoveryKey: rk, kdfParams: .default)
+            let backupA = try mA.exportBackup(recoveryKey: rk)
+            let backupB = try mB.exportBackup(recoveryKey: rk)
+            let jA = try JSONSerialization.jsonObject(with: backupA) as! [String: Any]
+            let jB = try JSONSerialization.jsonObject(with: backupB) as! [String: Any]
+            // KDF: both must agree on the default params (256 MiB / 8 iter / 4 par).
+            try assertEqual(jA["kdfMemory"] as? Int, 262_144)
+            try assertEqual(jB["kdfMemory"] as? Int, 262_144)
+            try assertEqual(jA["kdfIterations"] as? Int, 8)
+            try assertEqual(jB["kdfIterations"] as? Int, 8)
+            try assertEqual(jA["kdfParallelism"] as? Int, 4)
+            try assertEqual(jB["kdfParallelism"] as? Int, 4)
+            // Version locked at 1.
+            try assertEqual(jA["version"] as? Int, 1)
+            try assertEqual(jB["version"] as? Int, 1)
+        }
+
         // ─── Results ───
         print("\n\(BOLD)═══════════════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failed) failed")

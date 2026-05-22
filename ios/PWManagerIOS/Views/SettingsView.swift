@@ -99,13 +99,12 @@ struct SettingsView: View {
             .sheet(isPresented: $showExport) {
                 ExportBackupSheet(viewModel: viewModel, target: exportTarget) { url in
                     exportedFileURL = url
-                    showExport = false
-                    switch exportTarget {
-                    case .iCloud:
-                        icloudSavedMessage = "Saved to iCloud Drive → PWManager."
-                    case .share:
+                    if exportTarget == .share {
+                        showExport = false
                         showShareSheet = true
                     }
+                    // For .iCloud the sheet shows its own success screen and
+                    // dismisses on Done.
                 }
             }
             .sheet(isPresented: $showShareSheet) {
@@ -115,14 +114,6 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showICloudBrowser) {
                 ICloudBackupsView(viewModel: viewModel, mode: .manage)
-            }
-            .alert("Backup Saved", isPresented: Binding(
-                get: { icloudSavedMessage != nil },
-                set: { if !$0 { icloudSavedMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(icloudSavedMessage ?? "")
             }
         }
         .preferredColorScheme(.dark)
@@ -139,55 +130,187 @@ struct ExportBackupSheet: View {
     @State private var isExporting = false
     @State private var error: String?
     @State private var icloudStore = ICloudBackupStore()
+    @State private var savedFileName: String?
+
+    private var icon: String {
+        switch target {
+        case .iCloud: return "icloud.and.arrow.up"
+        case .share:  return "square.and.arrow.up"
+        }
+    }
+    private var title: String {
+        switch target {
+        case .iCloud: return "Export to iCloud Drive"
+        case .share:  return "Export Backup"
+        }
+    }
+    private var subtitle: String {
+        switch target {
+        case .iCloud: return "Your backup will sync to the PWManager folder in iCloud Drive on all your devices."
+        case .share:  return "Choose where to save the encrypted backup file."
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 18) {
-                Image(systemName: "arrow.down.doc.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.top, 24)
-                Text("Enter your recovery key to encrypt\na portable backup of this vault.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.text2)
-                    .multilineTextAlignment(.center)
-                TextField("XXXX-XXXX-XXXX-XXXX-XXXX", text: $recovery)
-                    .textFieldStyle(.roundedBorder)
-                    .autocapitalization(.allCharacters)
-                    .disableAutocorrection(true)
-                    .padding(.horizontal, 24)
-                Text("The backup can be restored on any device using only this recovery key. Keep both safe.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                if let err = error {
-                    Text(err).font(.caption).foregroundStyle(.red)
+            ZStack {
+                Theme.bg.ignoresSafeArea()
+                if let name = savedFileName {
+                    successView(name: name)
+                } else {
+                    formView
                 }
-                Button {
-                    Task { await performExport() }
-                } label: {
-                    if isExporting {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Export Backup")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(recovery.isEmpty || isExporting)
-                Spacer()
             }
-            .padding()
-            .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("Export Backup")
+            .navigationTitle(savedFileName == nil ? title : "Saved")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                if savedFileName == nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                } else {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .tint(Theme.accent)
+        .interactiveDismissDisabled(isExporting)
+    }
+
+    private var formView: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.accent.opacity(0.12))
+                        .frame(width: 84, height: 84)
+                    Image(systemName: icon)
+                        .font(.system(size: 36, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                }
+                Text(title)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Theme.text1)
+                Text(subtitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            .padding(.top, 24)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Recovery key")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.text3)
+                    .textCase(.uppercase)
+                TextField("XXXX-XXXX-XXXX-XXXX-XXXX", text: $recovery)
+                    .font(.system(.body, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+                    .autocapitalization(.allCharacters)
+                    .disableAutocorrection(true)
+            }
+            .padding(.horizontal, 24)
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("Anyone with this backup file and your recovery key can read your vault. Store both somewhere safe.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 24)
+
+            if let err = error {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 24)
+            }
+
+            Spacer()
+
+            Button {
+                Task { await performExport() }
+            } label: {
+                HStack {
+                    if isExporting {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: icon)
+                    }
+                    Text(isExporting ? "Encrypting..." : title)
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(recovery.isEmpty || isExporting)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private func successView(name: String) -> some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 96, height: 96)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.green)
+            }
+            .padding(.top, 60)
+
+            Text(target == .iCloud ? "Saved to iCloud Drive" : "Backup Saved")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Theme.text1)
+
+            VStack(spacing: 4) {
+                if target == .iCloud {
+                    Text("iCloud Drive › PWManager")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.text2)
+                }
+                Text(name)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.text1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Theme.bgField)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(.horizontal, 24)
+
+            if target == .iCloud {
+                Text("This backup will sync to all your other devices signed into the same Apple ID. To restore, open PWManager and tap **Restore from iCloud Drive**.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.text2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 4)
+            }
+
+            Spacer()
+
+            Button("Done") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+        }
     }
 
     private func performExport() async {
@@ -208,13 +331,16 @@ struct ExportBackupSheet: View {
                     return
                 }
                 url = try icloudStore.writeBackup(data: data, suggestedName: name)
+                isExporting = false
+                savedFileName = name      // Show in-sheet success screen
+                onExported(url)
             case .share:
                 url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
                 try data.write(to: url, options: .atomic)
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                isExporting = false
+                onExported(url)        // Hands off to system share sheet immediately
             }
-            isExporting = false
-            onExported(url)
         } catch {
             isExporting = false
             if case PasswordManagerError.incorrectPassword = error {
